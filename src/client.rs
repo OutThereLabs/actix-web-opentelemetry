@@ -16,6 +16,25 @@ static HTTP_STATUS_TEXT_ATTRIBUTE: &str = "http.status_text";
 static HTTP_FLAVOR_ATTRIBUTE: &str = "http.flavor";
 static ERROR_ATTRIBUTE: &str = "error";
 
+/// Trace an `actix_web::client::Client` request.
+///
+/// Example:
+/// ```rust
+/// use actix_web::client;
+/// use futures::Future;
+///
+/// fn execute_request(client: &client::Client) -> impl Future<Item = String, Error = ()> {
+///     actix_web_opentelemetry::with_tracing(client.get("http://localhost:8080"), |request| {
+///         request.send()
+///     })
+///     .map_err(|err| eprintln!("Error: {:?}", err))
+///     .and_then(|mut res| {
+///         res.body()
+///             .map(|bytes| std::str::from_utf8(&bytes).unwrap().to_string())
+///             .map_err(|err| eprintln!("Error: {:?}", err))
+///     })
+/// }
+/// ```
 pub fn with_tracing<F, R, S>(
     mut request: ClientRequest,
     f: F,

@@ -22,13 +22,63 @@ static HOST_NAME_ATTRIBUTE: &str = "host.name";
 static HOST_PORT_ATTRIBUTE: &str = "host.port";
 static ERROR_ATTRIBUTE: &str = "error";
 
-
+/// Request tracing middleware.
+///
+/// Example:
+/// ```rust,no_run
+/// use actix_web::{App, HttpServer, web};
+/// use actix_web_opentelemetry::RequestTracing;
+/// use opentelemetry::api;
+///
+/// fn init_tracer() {
+///     opentelemetry::global::set_provider(api::NoopProvider {});
+/// }
+///
+/// fn main() -> std::io::Result<()> {
+///     init_tracer();
+///     HttpServer::new(|| {
+///         App::new()
+///             .wrap(RequestTracing::new(false))
+///             .service(web::resource("/").to(|| "Hello world!"))
+///     })
+///     .bind("127.0.0.1:8080")?
+///     .run()
+/// }
+///```
 #[derive(Debug)]
 pub struct RequestTracing {
+    /// True if tracing headers should be parsed as single header.
+    ///
+    /// This middleware supports both version of B3 headers.
+    ///  1. Single Header:
+    ///
+    ///    - X-B3: `{trace_id}-{span_id}-{sampling_state}-{parent_span_id}`
+    ///
+    ///  2. Multiple Headers:
+    ///
+    ///    - X-B3-TraceId: `{trace_id}`
+    ///    - X-B3-ParentSpanId: `{parent_span_id}`
+    ///    - X-B3-SpanId: `{span_id}`
+    ///    - X-B3-Sampled: `{sampling_state}`
+    ///    - X-B3-Flags: `{debug_flag}`
     extract_single_header: bool,
 }
 
 impl RequestTracing {
+    /// Configures a request tracing middleware transformer.
+    ///
+    /// This middleware supports both version of B3 headers.
+    ///  1. Single Header:
+    ///
+    ///    - X-B3: `{trace_id}-{span_id}-{sampling_state}-{parent_span_id}`
+    ///
+    ///  2. Multiple Headers:
+    ///
+    ///    - X-B3-TraceId: `{trace_id}`
+    ///    - X-B3-ParentSpanId: `{parent_span_id}`
+    ///    - X-B3-SpanId: `{span_id}`
+    ///    - X-B3-Sampled: `{sampling_state}`
+    ///    - X-B3-Flags: `{debug_flag}`
     pub fn new(extract_single_header: bool) -> Self {
         RequestTracing {
             extract_single_header,
