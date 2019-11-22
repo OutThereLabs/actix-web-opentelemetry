@@ -1,3 +1,5 @@
+use crate::route_formatter::RouteFormatter;
+use crate::UuidWildcardFormatter;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::{HeaderName, HeaderValue};
 use actix_web::Error;
@@ -10,6 +12,7 @@ static SPAN_KIND_ATTRIBUTE: &str = "span.kind";
 static COMPONENT_ATTRIBUTE: &str = "component";
 static HTTP_METHOD_ATTRIBUTE: &str = "http.method";
 static HTTP_TARGET_ATTRIBUTE: &str = "http.target";
+static HTTP_ROUTE_ATTRIBUTE: &str = "http.route";
 static HTTP_HOST_ATTRIBUTE: &str = "http.host";
 static HTTP_SCHEME_ATTRIBUTE: &str = "http.scheme";
 static HTTP_STATUS_CODE_ATTRIBUTE: &str = "http.status_code";
@@ -46,25 +49,21 @@ static ERROR_ATTRIBUTE: &str = "error";
 /// }
 ///```
 #[derive(Debug)]
-pub struct RequestTracing {
-    /// True if tracing headers should be parsed as single header.
-    ///
-    /// This middleware supports both version of B3 headers.
-    ///  1. Single Header:
-    ///
-    ///    - X-B3: `{trace_id}-{span_id}-{sampling_state}-{parent_span_id}`
-    ///
-    ///  2. Multiple Headers:
-    ///
-    ///    - X-B3-TraceId: `{trace_id}`
-    ///    - X-B3-ParentSpanId: `{parent_span_id}`
-    ///    - X-B3-SpanId: `{span_id}`
-    ///    - X-B3-Sampled: `{sampling_state}`
-    ///    - X-B3-Flags: `{debug_flag}`
+pub struct RequestTracing<R: RouteFormatter> {
     extract_single_header: bool,
+    route_extractor: R,
 }
 
-impl RequestTracing {
+impl Default for RequestTracing<UuidWildcardFormatter> {
+    fn default() -> Self {
+        RequestTracing {
+            extract_single_header: false,
+            route_extractor: UuidWildcardFormatter::new(),
+        }
+    }
+}
+
+impl<R: RouteFormatter> RequestTracing<R> {
     /// Configures a request tracing middleware transformer.
     ///
     /// This middleware supports both version of B3 headers.
@@ -79,23 +78,25 @@ impl RequestTracing {
     ///    - X-B3-SpanId: `{span_id}`
     ///    - X-B3-Sampled: `{sampling_state}`
     ///    - X-B3-Flags: `{debug_flag}`
-    pub fn new(extract_single_header: bool) -> Self {
+    pub fn new(extract_single_header: bool, route_extractor: R) -> Self {
         RequestTracing {
             extract_single_header,
+            route_extractor,
         }
     }
 }
 
-impl<S, B> Transform<S> for RequestTracing
+impl<S, B, R> Transform<S> for RequestTracing<R>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
+    R: RouteFormatter + Clone,
 {
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = RequestTracingMiddleware<S, HttpB3Propagator>;
+    type Transform = RequestTracingMiddleware<S, HttpB3Propagator, R>;
     type InitError = ();
     type Future = FutureResult<Self::Transform, Self::InitError>;
 
@@ -103,34 +104,42 @@ where
         ok(RequestTracingMiddleware::new(
             service,
             HttpB3Propagator::new(self.extract_single_header),
+            self.route_extractor.clone(),
         ))
     }
 }
 
 #[derive(Debug)]
-pub struct RequestTracingMiddleware<S, T: api::HttpTextFormat> {
+pub struct RequestTracingMiddleware<S, H: api::HttpTextFormat, R: RouteFormatter> {
     service: S,
-    extractor: T,
+    header_extractor: H,
+    route_formatter: R,
 }
 
-impl<S, B, T> RequestTracingMiddleware<S, T>
+impl<S, B, H, R> RequestTracingMiddleware<S, H, R>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    T: api::HttpTextFormat,
+    H: api::HttpTextFormat,
+    R: RouteFormatter,
 {
-    fn new(service: S, extractor: T) -> Self {
-        RequestTracingMiddleware { service, extractor }
+    fn new(service: S, header_extractor: H, route_extractor: R) -> Self {
+        RequestTracingMiddleware {
+            service,
+            header_extractor,
+            route_formatter: route_extractor,
+        }
     }
 }
 
-impl<S, B, T> Service for RequestTracingMiddleware<S, T>
+impl<S, B, H, R> Service for RequestTracingMiddleware<S, H, R>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    T: api::HttpTextFormat,
+    H: api::HttpTextFormat,
+    R: RouteFormatter,
 {
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
@@ -143,7 +152,7 @@ where
 
     fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
         let parent = self
-            .extractor
+            .header_extractor
             .extract(&RequestHeaderCarrier::new(req.headers_mut()));
         let tracer = opentelemetry::global::trace_provider().get_tracer("middleware");
         let mut span = tracer.start("router", Some(parent));
@@ -173,6 +182,12 @@ where
         }
         if let Some(path) = req.uri().path_and_query() {
             span.set_attribute(KeyValue::new(HTTP_TARGET_ATTRIBUTE, path.as_str()))
+        }
+        if let Some(path) = req.uri().path_and_query() {
+            span.set_attribute(KeyValue::new(
+                HTTP_ROUTE_ATTRIBUTE,
+                self.route_formatter.format(path.as_str()).as_str(),
+            ))
         }
         if let Some(remote) = req.connection_info().remote() {
             span.set_attribute(KeyValue::new(HTTP_CLIENT_IP_ATTRIBUTE, remote))

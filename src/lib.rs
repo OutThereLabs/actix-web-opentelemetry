@@ -55,5 +55,10 @@
 
 mod client;
 mod middleware;
+mod route_formatter;
 
-pub use {client::with_tracing, middleware::RequestTracing};
+pub use {
+    client::with_tracing,
+    middleware::RequestTracing,
+    route_formatter::{RouteFormatter, UuidWildcardFormatter},
+};
