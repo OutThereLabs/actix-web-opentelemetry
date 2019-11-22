@@ -22,7 +22,7 @@ fn main() -> std::io::Result<()> {
     init_tracer();
     HttpServer::new(|| {
         App::new()
-            .wrap(RequestTracing::new(false))
+            .wrap(RequestTracing::default())
             .service(web::resource("/index.html").to(|| "Hello world!"))
             .service(web::resource("/").to(index))
     })
