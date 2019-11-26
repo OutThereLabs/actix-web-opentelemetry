@@ -1,5 +1,5 @@
-use actix_web::{web, App, HttpRequest, HttpServer};
-use actix_web_opentelemetry::RequestTracing;
+use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
+use actix_web_opentelemetry::{RequestMetrics, RequestTracing, UuidWildcardFormatter};
 use opentelemetry::{exporter::trace::jaeger, sdk};
 
 fn index(_req: HttpRequest) -> &'static str {
@@ -20,8 +20,17 @@ fn init_tracer() {
 
 fn main() -> std::io::Result<()> {
     init_tracer();
-    HttpServer::new(|| {
+    let meter = sdk::Meter::new("actix_server");
+    let request_metrics = RequestMetrics::new(
+        meter,
+        UuidWildcardFormatter::new(),
+        Some(|req: &dev::ServiceRequest| {
+            req.path() == "/metrics" && req.method() == http::Method::GET
+        }),
+    );
+    HttpServer::new(move || {
         App::new()
+            .wrap(request_metrics.clone())
             .wrap(RequestTracing::default())
             .service(web::resource("/index.html").to(|| "Hello world!"))
             .service(web::resource("/").to(index))

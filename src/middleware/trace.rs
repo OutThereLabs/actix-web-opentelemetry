@@ -1,5 +1,4 @@
-use crate::route_formatter::RouteFormatter;
-use crate::UuidWildcardFormatter;
+use super::route_formatter::{RouteFormatter, UuidWildcardFormatter};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::{HeaderName, HeaderValue};
 use actix_web::Error;
@@ -41,7 +40,7 @@ static ERROR_ATTRIBUTE: &str = "error";
 ///     init_tracer();
 ///     HttpServer::new(|| {
 ///         App::new()
-///             .wrap(RequestTracing::new(false))
+///             .wrap(RequestTracing::default())
 ///             .service(web::resource("/").to(|| "Hello world!"))
 ///     })
 ///     .bind("127.0.0.1:8080")?
@@ -51,14 +50,14 @@ static ERROR_ATTRIBUTE: &str = "error";
 #[derive(Debug)]
 pub struct RequestTracing<R: RouteFormatter> {
     extract_single_header: bool,
-    route_extractor: R,
+    route_formatter: R,
 }
 
 impl Default for RequestTracing<UuidWildcardFormatter> {
     fn default() -> Self {
         RequestTracing {
             extract_single_header: false,
-            route_extractor: UuidWildcardFormatter::new(),
+            route_formatter: UuidWildcardFormatter::new(),
         }
     }
 }
@@ -78,10 +77,10 @@ impl<R: RouteFormatter> RequestTracing<R> {
     ///    - X-B3-SpanId: `{span_id}`
     ///    - X-B3-Sampled: `{sampling_state}`
     ///    - X-B3-Flags: `{debug_flag}`
-    pub fn new(extract_single_header: bool, route_extractor: R) -> Self {
+    pub fn new(extract_single_header: bool, route_formatter: R) -> Self {
         RequestTracing {
             extract_single_header,
-            route_extractor,
+            route_formatter,
         }
     }
 }
@@ -104,7 +103,7 @@ where
         ok(RequestTracingMiddleware::new(
             service,
             HttpB3Propagator::new(self.extract_single_header),
-            self.route_extractor.clone(),
+            self.route_formatter.clone(),
         ))
     }
 }
@@ -124,11 +123,11 @@ where
     H: api::HttpTextFormat,
     R: RouteFormatter,
 {
-    fn new(service: S, header_extractor: H, route_extractor: R) -> Self {
+    fn new(service: S, header_extractor: H, route_formatter: R) -> Self {
         RequestTracingMiddleware {
             service,
             header_extractor,
-            route_formatter: route_extractor,
+            route_formatter,
         }
     }
 }
