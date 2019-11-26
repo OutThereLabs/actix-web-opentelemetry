@@ -42,7 +42,7 @@
 //!     init_tracer();
 //!     HttpServer::new(|| {
 //!         App::new()
-//!             .wrap(RequestTracing::new(false))
+//!             .wrap(RequestTracing::default())
 //!             .service(web::resource("/").to(|| "Hello world!"))
 //!     })
 //!     .bind("127.0.0.1:8080")?
@@ -55,10 +55,10 @@
 
 mod client;
 mod middleware;
-mod route_formatter;
 
 pub use {
     client::with_tracing,
-    middleware::RequestTracing,
-    route_formatter::{RouteFormatter, UuidWildcardFormatter},
+    middleware::metrics::{RequestMetrics, RequestMetricsMiddleware},
+    middleware::route_formatter::{RouteFormatter, UuidWildcardFormatter},
+    middleware::trace::RequestTracing,
 };
