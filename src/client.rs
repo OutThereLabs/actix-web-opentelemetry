@@ -47,7 +47,7 @@ where
     let tracer = opentelemetry::global::trace_provider().get_tracer("actix-client");
     let injector = opentelemetry::api::HttpB3Propagator::new(false);
     let parent = tracer.get_active_span().get_context();
-    let mut span = tracer.start(&request.get_uri().to_string(), Some(parent));
+    let mut span = tracer.start(request.get_uri().path(), Some(parent));
     span.set_attribute(KeyValue::new(SPAN_KIND_ATTRIBUTE, "client"));
     span.set_attribute(KeyValue::new(COMPONENT_ATTRIBUTE, "http"));
     span.set_attribute(KeyValue::new(
