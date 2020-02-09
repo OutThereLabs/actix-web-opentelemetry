@@ -1,7 +1,12 @@
 use actix_web::client::{ClientRequest, ClientResponse};
 use actix_web::http::{HeaderName, HeaderValue};
-use futures::{future, Future};
-use opentelemetry::api::{Carrier, HttpTextFormat, KeyValue, Provider, Span, Tracer, Value};
+use futures::{
+    future::{self, FutureExt},
+    Future,
+};
+use opentelemetry::api::{
+    trace::futures::Instrument, Carrier, HttpTextFormat, KeyValue, Provider, Span, Tracer, Value,
+};
 use std::str::FromStr;
 
 static SPAN_KIND_ATTRIBUTE: &str = "span.kind";
@@ -19,35 +24,53 @@ static ERROR_ATTRIBUTE: &str = "error";
 /// Trace an `actix_web::client::Client` request.
 ///
 /// Example:
-/// ```rust
+/// ```rust,no_run
 /// use actix_web::client;
 /// use futures::Future;
 ///
-/// fn execute_request(client: &client::Client) -> impl Future<Item = String, Error = ()> {
-///     actix_web_opentelemetry::with_tracing(client.get("http://localhost:8080"), |request| {
-///         request.send()
-///     })
-///     .map_err(|err| eprintln!("Error: {:?}", err))
-///     .and_then(|mut res| {
-///         res.body()
-///             .map(|bytes| std::str::from_utf8(&bytes).unwrap().to_string())
-///             .map_err(|err| eprintln!("Error: {:?}", err))
+/// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
+///     let mut res = actix_web_opentelemetry::with_tracing(
+///         client.get("http://localhost:8080"),
+///         |request| request.send()
+///     )
+///     .await;
+///
+///     res.and_then(|res| {
+///         println!("Response: {:?}", res);
+///         Ok(())
 ///     })
 /// }
 /// ```
-pub fn with_tracing<F, R, S>(
+pub fn with_tracing<F, R, RE, S>(
     mut request: ClientRequest,
     f: F,
-) -> impl Future<Item = ClientResponse<S>, Error = R::Error>
+) -> impl Future<Output = Result<ClientResponse<S>, RE>>
 where
     F: FnOnce(ClientRequest) -> R,
-    R: Future<Item = ClientResponse<S>>,
-    R::Error: std::fmt::Debug,
+    R: Future<Output = Result<ClientResponse<S>, RE>>,
+    RE: std::fmt::Debug,
 {
     let tracer = opentelemetry::global::trace_provider().get_tracer("actix-client");
-    let injector = opentelemetry::api::HttpB3Propagator::new(false);
-    let parent = tracer.get_active_span().get_context();
-    let mut span = tracer.start(request.get_uri().path(), Some(parent));
+    let injector = opentelemetry::api::B3Propagator::new(false);
+    let mut span = tracer.start(
+        format!(
+            "{} {}{}{}",
+            request.get_method(),
+            request
+                .get_uri()
+                .scheme()
+                .map(|s| format!("{}://", s.as_str()))
+                .unwrap_or_else(String::new),
+            request
+                .get_uri()
+                .authority()
+                .map(|s| s.as_str())
+                .unwrap_or(""),
+            request.get_uri().path()
+        )
+        .as_str(),
+        None,
+    );
     span.set_attribute(KeyValue::new(SPAN_KIND_ATTRIBUTE, "client"));
     span.set_attribute(KeyValue::new(COMPONENT_ATTRIBUTE, "http"));
     span.set_attribute(KeyValue::new(
@@ -76,25 +99,27 @@ where
         &mut ActixClientCarrier::new(&mut request),
     );
 
-    f(request).then(move |result| match result {
-        Ok(ok_result) => {
-            span.set_attribute(KeyValue::new(
-                HTTP_STATUS_CODE_ATTRIBUTE,
-                Value::U64(ok_result.status().as_u16() as u64),
-            ));
-            if let Some(reason) = ok_result.status().canonical_reason() {
-                span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
+    f(request)
+        .instrument(tracer.clone_span(&span))
+        .then(move |result| match result {
+            Ok(ok_result) => {
+                span.set_attribute(KeyValue::new(
+                    HTTP_STATUS_CODE_ATTRIBUTE,
+                    Value::U64(ok_result.status().as_u16() as u64),
+                ));
+                if let Some(reason) = ok_result.status().canonical_reason() {
+                    span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
+                }
+                span.end();
+                future::ok(ok_result)
             }
-            span.end();
-            future::ok(ok_result)
-        }
-        Err(err) => {
-            span.set_attribute(KeyValue::new(ERROR_ATTRIBUTE, Value::Bool(true)));
-            span.add_event(format!("{:?}", err));
-            span.end();
-            future::failed(err)
-        }
-    })
+            Err(err) => {
+                span.set_attribute(KeyValue::new(ERROR_ATTRIBUTE, Value::Bool(true)));
+                span.add_event(format!("{:?}", err));
+                span.end();
+                future::err(err)
+            }
+        })
 }
 
 struct ActixClientCarrier<'a> {
