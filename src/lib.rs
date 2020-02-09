@@ -11,26 +11,27 @@
 //! [`RequestTracing`]: struct.RequestTracing.html
 //!
 //! ### Client Request Example:
-//! ```rust
+//! ```rust,no_run
 //! use actix_web::client;
 //! use futures::Future;
 //!
-//! fn execute_request(client: &client::Client) -> impl Future<Item = String, Error = ()> {
-//!     actix_web_opentelemetry::with_tracing(client.get("http://localhost:8080"), |request| {
-//!         request.send()
-//!     })
-//!     .map_err(|err| eprintln!("Error: {:?}", err))
-//!     .and_then(|mut res| {
-//!         res.body()
-//!             .map(|bytes| std::str::from_utf8(&bytes).unwrap().to_string())
-//!             .map_err(|err| eprintln!("Error: {:?}", err))
+//! async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
+//!     let mut res = actix_web_opentelemetry::with_tracing(
+//!         client.get("http://localhost:8080"),
+//!         |request| request.send()
+//!     )
+//!     .await;
+//!
+//!     res.and_then(|res| {
+//!         println!("Response: {:?}", res);
+//!         Ok(())
 //!     })
 //! }
 //! ```
 //!
 //! ### Server middlware example:
 //! ```rust,no_run
-//! use actix_web::{App, HttpServer, web};
+//! use actix_web::{web, App, HttpServer};
 //! use actix_web_opentelemetry::RequestTracing;
 //! use opentelemetry::api;
 //!
@@ -38,15 +39,21 @@
 //!     opentelemetry::global::set_provider(api::NoopProvider {});
 //! }
 //!
-//! fn main() -> std::io::Result<()> {
+//! async fn index() -> &'static str {
+//!     "Hello world!"
+//! }
+//!
+//! #[actix_rt::main]
+//! async fn main() -> std::io::Result<()> {
 //!     init_tracer();
 //!     HttpServer::new(|| {
 //!         App::new()
 //!             .wrap(RequestTracing::default())
-//!             .service(web::resource("/").to(|| "Hello world!"))
+//!             .service(web::resource("/").to(index))
 //!     })
 //!     .bind("127.0.0.1:8080")?
 //!     .run()
+//!     .await
 //! }
 //! ```
 //!

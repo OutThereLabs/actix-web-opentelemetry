@@ -1,12 +1,17 @@
 //! # Metrics Middleware
 use crate::{RouteFormatter, UuidWildcardFormatter};
 use actix_web::dev;
-use futures::{future, Future};
+use futures::{
+    future::{self, FutureExt},
+    Future,
+};
 use opentelemetry::{
     api::{self, Counter, Measure, Meter, MetricOptions},
     exporter::metrics::prometheus::{self, Encoder},
 };
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::SystemTime;
 
 /// Request metrics tracking
@@ -129,7 +134,7 @@ where
     type Error = actix_web::Error;
     type Transform = RequestMetricsMiddleware<S, M, R, F>;
     type InitError = ();
-    type Future = future::FutureResult<Self::Transform, Self::InitError>;
+    type Future = future::Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
         future::ok(RequestMetricsMiddleware {
@@ -171,13 +176,13 @@ where
     type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self) -> Result<futures::Async<()>, Self::Error> {
-        self.service.poll_ready()
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Self::Request) -> Self::Future {
+    fn call(&mut self, req: dev::ServiceRequest) -> Self::Future {
         if self
             .inner
             .should_render_metrics
@@ -185,7 +190,7 @@ where
             .map(|f| f(&req))
             .unwrap_or(false)
         {
-            Box::new(future::ok(
+            Box::pin(future::ok(
                 req.into_response(
                     actix_web::HttpResponse::Ok()
                         .body(dev::Body::from_message(self.inner.metrics()))
@@ -198,19 +203,24 @@ where
             let route = request_metrics.route_formatter.format(req.path());
             let method = req.method().as_str().to_string();
 
-            Box::new(self.service.call(req).map(move |res| {
-                let standard_labels = request_metrics.sdk.labels(vec![
-                    api::KeyValue::new("route", route.as_str()),
-                    api::KeyValue::new("method", method.as_str()),
-                    api::KeyValue::new("status", api::Value::U64(res.status().as_u16() as u64)),
-                ]);
-                request_metrics.http_requests_total.add(1, &standard_labels);
-                request_metrics.http_requests_duration_seconds.record(
-                    timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or(0.0),
-                    &standard_labels,
-                );
+            Box::pin(self.service.call(req).map(move |res| {
+                // Ignore actix errors for metrics
+                if let Ok(res) = res {
+                    let standard_labels = request_metrics.sdk.labels(vec![
+                        api::KeyValue::new("route", route.as_str()),
+                        api::KeyValue::new("method", method.as_str()),
+                        api::KeyValue::new("status", api::Value::U64(res.status().as_u16() as u64)),
+                    ]);
+                    request_metrics.http_requests_total.add(1, &standard_labels);
+                    request_metrics.http_requests_duration_seconds.record(
+                        timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or(0.0),
+                        &standard_labels,
+                    );
 
-                res
+                    Ok(res)
+                } else {
+                    res
+                }
             }))
         }
     }

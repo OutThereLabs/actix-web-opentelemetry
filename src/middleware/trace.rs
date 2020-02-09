@@ -2,10 +2,16 @@ use super::route_formatter::{RouteFormatter, UuidWildcardFormatter};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::{HeaderName, HeaderValue};
 use actix_web::Error;
-use futures::future::{ok, FutureResult};
-use futures::{Future, Poll};
-use opentelemetry::api::{self, HttpB3Propagator, KeyValue, Provider, Span, Tracer, Value};
+use futures::{
+    future::{ok, FutureExt, Ready},
+    Future,
+};
+use opentelemetry::api::{
+    self, trace::futures::Instrument, B3Propagator, KeyValue, Provider, Span, Tracer, Value,
+};
+use std::pin::Pin;
 use std::str::FromStr;
+use std::task::Poll;
 
 static SPAN_KIND_ATTRIBUTE: &str = "span.kind";
 static COMPONENT_ATTRIBUTE: &str = "component";
@@ -28,7 +34,10 @@ static ERROR_ATTRIBUTE: &str = "error";
 ///
 /// Example:
 /// ```rust,no_run
-/// use actix_web::{App, HttpServer, web};
+/// #[macro_use]
+/// extern crate actix_web;
+///
+/// use actix_web::{web, App, HttpServer};
 /// use actix_web_opentelemetry::RequestTracing;
 /// use opentelemetry::api;
 ///
@@ -36,15 +45,21 @@ static ERROR_ATTRIBUTE: &str = "error";
 ///     opentelemetry::global::set_provider(api::NoopProvider {});
 /// }
 ///
-/// fn main() -> std::io::Result<()> {
+/// async fn index() -> &'static str {
+///     "Hello world!"
+/// }
+///
+/// #[actix_rt::main]
+/// async fn main() -> std::io::Result<()> {
 ///     init_tracer();
 ///     HttpServer::new(|| {
 ///         App::new()
 ///             .wrap(RequestTracing::default())
-///             .service(web::resource("/").to(|| "Hello world!"))
+///             .service(web::resource("/").to(index))
 ///     })
 ///     .bind("127.0.0.1:8080")?
 ///     .run()
+///     .await
 /// }
 ///```
 #[derive(Debug)]
@@ -95,14 +110,14 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = RequestTracingMiddleware<S, HttpB3Propagator, R>;
+    type Transform = RequestTracingMiddleware<S, B3Propagator, R>;
     type InitError = ();
-    type Future = FutureResult<Self::Transform, Self::InitError>;
+    type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
             service,
-            HttpB3Propagator::new(self.extract_single_header),
+            B3Propagator::new(self.extract_single_header),
             self.route_formatter.clone(),
         ))
     }
@@ -143,18 +158,18 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.service.poll_ready()
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(cx)
     }
 
     fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
         let parent = self
             .header_extractor
             .extract(&RequestHeaderCarrier::new(req.headers_mut()));
-        let tracer = opentelemetry::global::trace_provider().get_tracer("middleware");
-        let mut span = tracer.start("router", Some(parent));
+        let tracer = opentelemetry::global::trace_provider().get_tracer("actix-web-opentelemetry");
+        let mut span = tracer.start("middleware", Some(parent));
         span.set_attribute(KeyValue::new(SPAN_KIND_ATTRIBUTE, "server"));
         span.set_attribute(KeyValue::new(COMPONENT_ATTRIBUTE, "http"));
         span.set_attribute(KeyValue::new(HTTP_METHOD_ATTRIBUTE, req.method().as_str()));
@@ -191,29 +206,32 @@ where
         if let Some(remote) = req.connection_info().remote() {
             span.set_attribute(KeyValue::new(HTTP_CLIENT_IP_ATTRIBUTE, remote))
         }
-        tracer.mark_span_as_active(&span);
 
-        Box::new(self.service.call(req).then(move |res| match res {
-            Ok(ok_res) => {
-                span.set_attribute(KeyValue::new(
-                    HTTP_STATUS_CODE_ATTRIBUTE,
-                    Value::U64(ok_res.status().as_u16() as u64),
-                ));
-                if let Some(reason) = ok_res.status().canonical_reason() {
-                    span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
+        let fut = self
+            .service
+            .call(req)
+            .instrument(tracer.clone_span(&span))
+            .map(move |res| match res {
+                Ok(ok_res) => {
+                    span.set_attribute(KeyValue::new(
+                        HTTP_STATUS_CODE_ATTRIBUTE,
+                        Value::U64(ok_res.status().as_u16() as u64),
+                    ));
+                    if let Some(reason) = ok_res.status().canonical_reason() {
+                        span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
+                    }
+                    span.end();
+                    Ok(ok_res)
                 }
-                span.end();
-                tracer.mark_span_as_inactive(span.get_context().span_id());
-                Ok(ok_res)
-            }
-            Err(err) => {
-                span.set_attribute(KeyValue::new(ERROR_ATTRIBUTE, Value::Bool(true)));
-                span.add_event(format!("{:?}", err));
-                span.end();
-                tracer.mark_span_as_inactive(span.get_context().span_id());
-                Err(err)
-            }
-        }))
+                Err(err) => {
+                    span.set_attribute(KeyValue::new(ERROR_ATTRIBUTE, Value::Bool(true)));
+                    span.add_event(format!("{:?}", err));
+                    span.end();
+                    Err(err)
+                }
+            });
+
+        Box::pin(async move { fut.await })
     }
 }
 
