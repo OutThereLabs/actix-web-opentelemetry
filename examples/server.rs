@@ -1,8 +1,9 @@
 use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::{RequestMetrics, RequestTracing, UuidWildcardFormatter};
-use opentelemetry::{global, sdk};
+use opentelemetry::{api::KeyValue, global, sdk};
+use std::sync::Arc;
 
-async fn index(_req: HttpRequest) -> &'static str {
+async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
     "Hello world!"
 }
 
@@ -19,6 +20,12 @@ fn init_tracer() -> std::io::Result<()> {
         .with_simple_exporter(exporter)
         .with_config(sdk::Config {
             default_sampler: Box::new(sdk::Sampler::Always),
+            resource: Arc::new(sdk::Resource::new(vec![
+                KeyValue::new("service.name", "demo-backend"),
+                KeyValue::new("service.namespace", "demo"),
+                KeyValue::new("service.instance.id", "1"),
+                KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+            ])),
             ..Default::default()
         })
         .build();
@@ -42,7 +49,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(request_metrics.clone())
             .wrap(RequestTracing::default())
-            .service(web::resource("/").to(index))
+            .service(web::resource("/users/{id}").to(index))
     })
     .bind("127.0.0.1:8080")?
     .run()

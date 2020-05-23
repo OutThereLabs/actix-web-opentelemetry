@@ -7,28 +7,29 @@ use futures::{
     Future,
 };
 use opentelemetry::api::{
-    self, trace::futures::Instrument, B3Propagator, KeyValue, Provider, Span, Tracer, Value,
+    self, B3Propagator, Context, FutureExt as OtelFutureExt, KeyValue, StatusCode, TraceContextExt,
+    Tracer, Value,
 };
+use opentelemetry::global;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::task::Poll;
 
-static SPAN_KIND_ATTRIBUTE: &str = "span.kind";
-static COMPONENT_ATTRIBUTE: &str = "component";
+// Http common attributes
 static HTTP_METHOD_ATTRIBUTE: &str = "http.method";
 static HTTP_TARGET_ATTRIBUTE: &str = "http.target";
-static HTTP_ROUTE_ATTRIBUTE: &str = "http.route";
-static HTTP_HOST_ATTRIBUTE: &str = "http.host";
 static HTTP_SCHEME_ATTRIBUTE: &str = "http.scheme";
 static HTTP_STATUS_CODE_ATTRIBUTE: &str = "http.status_code";
 static HTTP_STATUS_TEXT_ATTRIBUTE: &str = "http.status_text";
 static HTTP_FLAVOR_ATTRIBUTE: &str = "http.flavor";
+static HTTP_USER_AGENT_ATTRIBUTE: &str = "http.user_agent";
 
+// Http server attributes
+static HTTP_HOST_ATTRIBUTE: &str = "http.host";
 static HTTP_SERVER_NAME_ATTRIBUTE: &str = "http.server_name";
+static HTTP_ROUTE_ATTRIBUTE: &str = "http.route";
 static HTTP_CLIENT_IP_ATTRIBUTE: &str = "http.client_ip";
-static HOST_NAME_ATTRIBUTE: &str = "host.name";
-static HOST_PORT_ATTRIBUTE: &str = "host.port";
-static ERROR_ATTRIBUTE: &str = "error";
+static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 
 /// Request tracing middleware.
 ///
@@ -165,54 +166,55 @@ where
     }
 
     fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
-        let parent = self
+        let _parent_context = self
             .header_extractor
-            .extract(&RequestHeaderCarrier::new(req.headers_mut()));
-        let tracer = opentelemetry::global::trace_provider().get_tracer("actix-web-opentelemetry");
-        let mut span = tracer.start("middleware", Some(parent));
-        span.set_attribute(KeyValue::new(SPAN_KIND_ATTRIBUTE, "server"));
-        span.set_attribute(KeyValue::new(COMPONENT_ATTRIBUTE, "http"));
-        span.set_attribute(KeyValue::new(HTTP_METHOD_ATTRIBUTE, req.method().as_str()));
-        span.set_attribute(KeyValue::new(
-            HTTP_FLAVOR_ATTRIBUTE,
-            format!("{:?}", req.version()).as_str(),
-        ));
+            .extract(&RequestHeaderCarrier::new(req.headers_mut()))
+            .attach();
+        let tracer = global::tracer("actix-web-opentelemetry");
+        let http_route = self.route_formatter.format(req.uri().path());
+        let mut builder = tracer.span_builder(&http_route);
+        builder.span_kind = Some(api::SpanKind::Server);
+        let mut attributes = vec![
+            KeyValue::new(HTTP_METHOD_ATTRIBUTE, req.method().as_str()),
+            KeyValue::new(
+                HTTP_FLAVOR_ATTRIBUTE,
+                format!("{:?}", req.version()).replace("HTTP/", ""),
+            ),
+            KeyValue::new(HTTP_HOST_ATTRIBUTE, req.connection_info().host()),
+            KeyValue::new(HTTP_ROUTE_ATTRIBUTE, http_route),
+            KeyValue::new(HTTP_SCHEME_ATTRIBUTE, req.connection_info().scheme()),
+        ];
         let server_name = req.app_config().host();
         if server_name != req.connection_info().host() {
-            span.set_attribute(KeyValue::new(HTTP_SERVER_NAME_ATTRIBUTE, server_name));
+            attributes.push(KeyValue::new(HTTP_SERVER_NAME_ATTRIBUTE, server_name));
         }
-        span.set_attribute(KeyValue::new(
-            HOST_NAME_ATTRIBUTE,
-            req.connection_info().host(),
-        ));
-        if let Some(port) = req.uri().port_u16() {
-            span.set_attribute(KeyValue::new(HOST_PORT_ATTRIBUTE, Value::U64(port as u64)))
-        }
-        if let Some(host) = req.uri().host() {
-            span.set_attribute(KeyValue::new(HTTP_HOST_ATTRIBUTE, host))
-        }
-        if let Some(scheme) = req.uri().scheme_str() {
-            span.set_attribute(KeyValue::new(HTTP_SCHEME_ATTRIBUTE, scheme))
+        if let Some(port) = req.connection_info().host().split_terminator(':').nth(1) {
+            attributes.push(KeyValue::new(NET_HOST_PORT_ATTRIBUTE, port))
         }
         if let Some(path) = req.uri().path_and_query() {
-            span.set_attribute(KeyValue::new(HTTP_TARGET_ATTRIBUTE, path.as_str()))
+            attributes.push(KeyValue::new(HTTP_TARGET_ATTRIBUTE, path.as_str()))
         }
-        if let Some(path) = req.uri().path_and_query() {
-            span.set_attribute(KeyValue::new(
-                HTTP_ROUTE_ATTRIBUTE,
-                self.route_formatter.format(path.as_str()).as_str(),
-            ))
+        if let Some(user_agent) = req
+            .headers()
+            .get("User-Agent")
+            .and_then(|s| s.to_str().ok())
+        {
+            attributes.push(KeyValue::new(HTTP_USER_AGENT_ATTRIBUTE, user_agent))
         }
         if let Some(remote) = req.connection_info().remote() {
-            span.set_attribute(KeyValue::new(HTTP_CLIENT_IP_ATTRIBUTE, remote))
+            attributes.push(KeyValue::new(HTTP_CLIENT_IP_ATTRIBUTE, remote))
         }
+        builder.attributes = Some(attributes);
+        let span = tracer.build(builder);
+        let cx = Context::current_with_span(span);
 
         let fut = self
             .service
             .call(req)
-            .instrument(tracer.clone_span(&span))
+            .with_context(cx.clone())
             .map(move |res| match res {
                 Ok(ok_res) => {
+                    let span = cx.span();
                     span.set_attribute(KeyValue::new(
                         HTTP_STATUS_CODE_ATTRIBUTE,
                         Value::U64(ok_res.status().as_u16() as u64),
@@ -220,12 +222,26 @@ where
                     if let Some(reason) = ok_res.status().canonical_reason() {
                         span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
                     }
+                    let status_code = match ok_res.status().as_u16() {
+                        100..=399 => StatusCode::OK,
+                        401 => StatusCode::Unauthenticated,
+                        403 => StatusCode::PermissionDenied,
+                        404 => StatusCode::NotFound,
+                        429 => StatusCode::ResourceExhausted,
+                        400..=499 => StatusCode::InvalidArgument,
+                        501 => StatusCode::Unimplemented,
+                        503 => StatusCode::Unavailable,
+                        504 => StatusCode::DeadlineExceeded,
+                        500..=599 => StatusCode::Internal,
+                        _ => StatusCode::Unknown,
+                    };
+                    span.set_status(status_code, "".to_string());
                     span.end();
                     Ok(ok_res)
                 }
                 Err(err) => {
-                    span.set_attribute(KeyValue::new(ERROR_ATTRIBUTE, Value::Bool(true)));
-                    span.add_event(format!("{:?}", err));
+                    let span = cx.span();
+                    span.set_status(StatusCode::Internal, format!("{:?}", err));
                     span.end();
                     Err(err)
                 }
