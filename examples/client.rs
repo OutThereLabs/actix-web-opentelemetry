@@ -1,17 +1,15 @@
-use actix_rt::System;
 use actix_web::client;
-use opentelemetry::{global, sdk};
+use opentelemetry::{api::KeyValue, global, sdk};
 use std::io;
-use std::thread;
-use std::time::Duration;
+use std::sync::Arc;
 
 async fn execute_request(client: client::Client) -> Result<String, io::Error> {
-    let mut response =
-        actix_web_opentelemetry::with_tracing(client.get("http://localhost:8080"), |request| {
-            request.send()
-        })
-        .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+    let mut response = actix_web_opentelemetry::with_tracing(
+        client.get("http://localhost:8080/users/103240ba-3d8d-4695-a176-e19cbc627483?a=1"),
+        |request| request.send(),
+    )
+    .await
+    .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
 
     let bytes = response
         .body()
@@ -36,6 +34,12 @@ fn init_tracer() -> io::Result<()> {
         .with_simple_exporter(exporter)
         .with_config(sdk::Config {
             default_sampler: Box::new(sdk::Sampler::Always),
+            resource: Arc::new(sdk::Resource::new(vec![
+                KeyValue::new("service.name", "demo-client"),
+                KeyValue::new("service.namespace", "demo"),
+                KeyValue::new("service.instance.id", "2"),
+                KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+            ])),
             ..Default::default()
         })
         .build();
@@ -44,14 +48,13 @@ fn init_tracer() -> io::Result<()> {
     Ok(())
 }
 
-fn main() -> io::Result<()> {
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
     init_tracer()?;
     let client = client::Client::new();
-    let response = System::new("actix-web-opentelemetry").block_on(execute_request(client))?;
+    let response = execute_request(client).await?;
 
     println!("Response: {}", response);
-
-    thread::sleep(Duration::from_millis(100));
 
     Ok(())
 }
