@@ -262,11 +262,11 @@ impl<'a> RequestHeaderCarrier<'a> {
 }
 
 impl<'a> opentelemetry::api::Carrier for RequestHeaderCarrier<'a> {
-    fn get(&self, key: &'static str) -> Option<&str> {
+    fn get(&self, key: &str) -> Option<&str> {
         self.headers.get(key).and_then(|v| v.to_str().ok())
     }
 
-    fn set(&mut self, key: &'static str, value: String) {
+    fn set(&mut self, key: &str, value: String) {
         let header_name = HeaderName::from_str(key).expect("Must be header name");
         let header_value = HeaderValue::from_str(&value).expect("Must be a header value");
         self.headers.insert(header_name, header_value)

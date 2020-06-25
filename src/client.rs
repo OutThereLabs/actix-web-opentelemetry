@@ -110,14 +110,14 @@ impl<'a> ActixClientCarrier<'a> {
 }
 
 impl<'a> Carrier for ActixClientCarrier<'a> {
-    fn get(&self, key: &'static str) -> Option<&str> {
+    fn get(&self, key: &str) -> Option<&str> {
         self.request
             .headers()
             .get(key)
             .map(|value| value.to_str().unwrap())
     }
 
-    fn set(&mut self, key: &'static str, value: String) {
+    fn set(&mut self, key: &str, value: String) {
         let header_name = HeaderName::from_str(key).expect("Must be header name");
         let header_value = HeaderValue::from_str(&value).expect("Must be a header value");
         self.request.headers_mut().insert(header_name, header_value);
