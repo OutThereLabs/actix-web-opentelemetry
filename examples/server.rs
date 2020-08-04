@@ -19,7 +19,7 @@ fn init_tracer() -> std::io::Result<()> {
     let provider = sdk::Provider::builder()
         .with_simple_exporter(exporter)
         .with_config(sdk::Config {
-            default_sampler: Box::new(sdk::Sampler::Always),
+            default_sampler: Box::new(sdk::Sampler::AlwaysOn),
             resource: Arc::new(sdk::Resource::new(vec![
                 KeyValue::new("service.name", "demo-backend"),
                 KeyValue::new("service.namespace", "demo"),
