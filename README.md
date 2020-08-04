@@ -1,5 +1,6 @@
 # Actix Web OpenTelemetry
 
+[![Build Status](https://github.com/OutThereLabs/actix-web-opentelemetry/workflows/CI/badge.svg)](https://github.com/OutThereLabs/actix-web-opentelemetry/actions?query=workflow%3ACI)
 [![Crates.io: actix-web-opentelemetry](https://img.shields.io/crates/v/actix-web-opentelemetry.svg)](https://crates.io/crates/actix-web-opentelemetry)
 [![Documentation](https://docs.rs/actix-web-opentelemetry/badge.svg)](https://docs.rs/actix-web-opentelemetry)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
