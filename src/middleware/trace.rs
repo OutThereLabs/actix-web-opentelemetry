@@ -6,6 +6,7 @@ use futures::{
     future::{ok, FutureExt, Ready},
     Future,
 };
+use opentelemetry::api::trace::b3_propagator::B3Encoding;
 use opentelemetry::api::{
     self, B3Propagator, Context, FutureExt as OtelFutureExt, KeyValue, StatusCode, TraceContextExt,
     Tracer, Value,
@@ -65,14 +66,14 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 ///```
 #[derive(Debug)]
 pub struct RequestTracing<R: RouteFormatter> {
-    extract_single_header: bool,
+    header_encoding: B3Encoding,
     route_formatter: R,
 }
 
 impl Default for RequestTracing<UuidWildcardFormatter> {
     fn default() -> Self {
         RequestTracing {
-            extract_single_header: false,
+            header_encoding: B3Encoding::MultipleHeader,
             route_formatter: UuidWildcardFormatter::new(),
         }
     }
@@ -93,9 +94,9 @@ impl<R: RouteFormatter> RequestTracing<R> {
     ///    - X-B3-SpanId: `{span_id}`
     ///    - X-B3-Sampled: `{sampling_state}`
     ///    - X-B3-Flags: `{debug_flag}`
-    pub fn new(extract_single_header: bool, route_formatter: R) -> Self {
+    pub fn new(header_encoding: B3Encoding, route_formatter: R) -> Self {
         RequestTracing {
-            extract_single_header,
+            header_encoding,
             route_formatter,
         }
     }
@@ -118,7 +119,7 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
             service,
-            B3Propagator::new(self.extract_single_header),
+            B3Propagator::with_encoding(self.header_encoding.clone()),
             self.route_formatter.clone(),
         ))
     }
