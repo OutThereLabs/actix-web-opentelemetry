@@ -44,7 +44,7 @@ where
     RE: std::fmt::Debug,
 {
     let tracer = global::tracer("actix-client");
-    let injector = opentelemetry::api::B3Propagator::new(false);
+    let injector = opentelemetry::api::B3Propagator::default();
     let span = tracer
         .span_builder(
             format!(
