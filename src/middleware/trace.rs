@@ -44,6 +44,8 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 /// use opentelemetry::api;
 ///
 /// fn init_tracer() {
+///     // Replace this no-op provider with something like:
+///     // https://docs.rs/opentelemetry-jaeger
 ///     opentelemetry::global::set_provider(api::NoopProvider {});
 /// }
 ///
