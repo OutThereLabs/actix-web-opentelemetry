@@ -7,7 +7,7 @@ use actix_web::{
 };
 use futures::{future::TryFutureExt, Future, Stream};
 use opentelemetry::api::{
-    Carrier, Context, FutureExt, HttpTextFormat, KeyValue, SpanKind, StatusCode, TraceContextExt,
+    Context, FutureExt, HttpTextFormat, Injector, KeyValue, SpanKind, StatusCode, TraceContextExt,
     Tracer, Value,
 };
 use opentelemetry::global;
@@ -299,14 +299,7 @@ impl<'a> ActixClientCarrier<'a> {
     }
 }
 
-impl<'a> Carrier for ActixClientCarrier<'a> {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.request
-            .headers()
-            .get(key)
-            .map(|value| value.to_str().unwrap())
-    }
-
+impl<'a> Injector for ActixClientCarrier<'a> {
     fn set(&mut self, key: &str, value: String) {
         let header_name = HeaderName::from_str(key).expect("Must be header name");
         let header_value = HeaderValue::from_str(&value).expect("Must be a header value");
