@@ -8,8 +8,7 @@ use futures::{
 };
 use opentelemetry::api::trace::b3_propagator::B3Encoding;
 use opentelemetry::api::{
-    self, B3Propagator, Context, FutureExt as OtelFutureExt, KeyValue, StatusCode, TraceContextExt,
-    Tracer, Value,
+    self, Context, FutureExt as OtelFutureExt, KeyValue, StatusCode, TraceContextExt, Tracer, Value,
 };
 use opentelemetry::global;
 use std::pin::Pin;
@@ -35,7 +34,7 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 /// Request tracing middleware.
 ///
 /// Example:
-/// ```rust,no_run
+/// ```no_run
 /// #[macro_use]
 /// extern crate actix_web;
 ///
@@ -114,49 +113,44 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = RequestTracingMiddleware<S, B3Propagator, R>;
+    type Transform = RequestTracingMiddleware<S, R>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
             service,
-            B3Propagator::with_encoding(self.header_encoding.clone()),
             self.route_formatter.clone(),
         ))
     }
 }
 
 #[derive(Debug)]
-pub struct RequestTracingMiddleware<S, H: api::HttpTextFormat, R: RouteFormatter> {
+pub struct RequestTracingMiddleware<S, R: RouteFormatter> {
     service: S,
-    header_extractor: H,
     route_formatter: R,
 }
 
-impl<S, B, H, R> RequestTracingMiddleware<S, H, R>
+impl<S, B, R> RequestTracingMiddleware<S, R>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    H: api::HttpTextFormat,
     R: RouteFormatter,
 {
-    fn new(service: S, header_extractor: H, route_formatter: R) -> Self {
+    fn new(service: S, route_formatter: R) -> Self {
         RequestTracingMiddleware {
             service,
-            header_extractor,
             route_formatter,
         }
     }
 }
 
-impl<S, B, H, R> Service for RequestTracingMiddleware<S, H, R>
+impl<S, B, R> Service for RequestTracingMiddleware<S, R>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    H: api::HttpTextFormat,
     R: RouteFormatter,
 {
     type Request = ServiceRequest;
@@ -169,10 +163,10 @@ where
     }
 
     fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
-        let _parent_context = self
-            .header_extractor
-            .extract(&RequestHeaderCarrier::new(req.headers_mut()))
-            .attach();
+        let _parent_context = global::get_http_text_propagator(|propagator| {
+            propagator.extract(&RequestHeaderCarrier::new(req.headers_mut()))
+        })
+        .attach();
         let tracer = global::tracer("actix-web-opentelemetry");
         let http_route = self.route_formatter.format(req.uri().path());
         let mut builder = tracer.span_builder(&http_route);

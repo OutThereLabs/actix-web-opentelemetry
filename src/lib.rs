@@ -4,33 +4,32 @@
 //!
 //! This crate allows you to easily instrument client and server requests.
 //!
-//! * Client requests can be traced by using the [`with_tracing`] function.
+//! * Client requests can be traced by using the [`ClientExt::trace_request`] function.
 //! * Server requests can be traced by using the [`RequestTracing`] struct.
 //!
-//! [`with_tracing`]: fn.with_tracing.html
+//! [`ClientExt::trace_request`]: trait.ClientExt.html#method.trace_request
 //! [`RequestTracing`]: struct.RequestTracing.html
 //!
 //! ### Client Request Example:
-//! ```rust,no_run
+//! ```no_run
 //! use actix_web::client;
+//! use actix_web_opentelemetry::ClientExt;
 //! use futures::Future;
 //!
 //! async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
-//!     let mut res = actix_web_opentelemetry::with_tracing(
-//!         client.get("http://localhost:8080"),
-//!         |request| request.send()
-//!     )
-//!     .await;
+//!     let res = client
+//!         .get("http://localhost:8080")
+//!         .trace_request()
+//!         .send()
+//!         .await?;
 //!
-//!     res.and_then(|res| {
-//!         println!("Response: {:?}", res);
-//!         Ok(())
-//!     })
+//!     println!("Response: {:?}", res);
+//!     Ok(())
 //! }
 //! ```
 //!
-//! ### Server middlware example:
-//! ```rust,no_run
+//! ### Server middleware example:
+//! ```no_run
 //! use actix_web::{web, App, HttpServer};
 //! use actix_web_opentelemetry::RequestTracing;
 //! use opentelemetry::api;
@@ -65,8 +64,9 @@
 mod client;
 mod middleware;
 
+#[allow(deprecated)]
 pub use {
-    client::with_tracing,
+    client::{with_tracing, ClientExt, InstrumentedClientRequest},
     middleware::metrics::{RequestMetrics, RequestMetricsMiddleware},
     middleware::route_formatter::{RouteFormatter, UuidWildcardFormatter},
     middleware::trace::RequestTracing,

@@ -1,15 +1,16 @@
 use actix_web::client;
+use actix_web_opentelemetry::ClientExt;
 use opentelemetry::{api::KeyValue, global, sdk};
 use std::io;
 use std::sync::Arc;
 
 async fn execute_request(client: client::Client) -> Result<String, io::Error> {
-    let mut response = actix_web_opentelemetry::with_tracing(
-        client.get("http://localhost:8080/users/103240ba-3d8d-4695-a176-e19cbc627483?a=1"),
-        |request| request.send(),
-    )
-    .await
-    .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+    let mut response = client
+        .get("http://localhost:8080/users/103240ba-3d8d-4695-a176-e19cbc627483?a=1")
+        .trace_request()
+        .send()
+        .await
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
 
     let bytes = response
         .body()
