@@ -1,6 +1,5 @@
 use super::route_formatter::{RouteFormatter, UuidWildcardFormatter};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::http::{HeaderName, HeaderValue};
 use actix_web::Error;
 use futures::{
     future::{ok, FutureExt, Ready},
@@ -12,7 +11,6 @@ use opentelemetry::api::{
 };
 use opentelemetry::global;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::task::Poll;
 
 // Http common attributes
@@ -249,23 +247,17 @@ where
 }
 
 struct RequestHeaderCarrier<'a> {
-    headers: &'a mut actix_web::http::HeaderMap,
+    headers: &'a actix_web::http::HeaderMap,
 }
 
 impl<'a> RequestHeaderCarrier<'a> {
-    fn new(headers: &'a mut actix_web::http::HeaderMap) -> Self {
+    fn new(headers: &'a actix_web::http::HeaderMap) -> Self {
         RequestHeaderCarrier { headers }
     }
 }
 
-impl<'a> opentelemetry::api::Carrier for RequestHeaderCarrier<'a> {
+impl<'a> opentelemetry::api::Extractor for RequestHeaderCarrier<'a> {
     fn get(&self, key: &str) -> Option<&str> {
         self.headers.get(key).and_then(|v| v.to_str().ok())
-    }
-
-    fn set(&mut self, key: &str, value: String) {
-        let header_name = HeaderName::from_str(key).expect("Must be header name");
-        let header_value = HeaderValue::from_str(&value).expect("Must be a header value");
-        self.headers.insert(header_name, header_value)
     }
 }
