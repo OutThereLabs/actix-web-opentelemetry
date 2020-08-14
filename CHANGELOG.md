@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.5.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.4.0...v0.5.0)
+
+### Added
+
+- Trace actix client requests with `ClientExt::trace_request` or
+  `ClientExt::trace_request_with_context`. #17
+
+### Changed
+
+- Update to OpenTelemetry v0.8.0 #18
+- Deprecated `with_tracing` fn. Use `ClientExt` instead. #17
+
+
 ## [v0.4.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.3.0...v0.4.0)
 
 ### Changed
