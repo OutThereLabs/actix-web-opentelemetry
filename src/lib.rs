@@ -68,6 +68,8 @@ mod middleware;
 pub use {
     client::{with_tracing, ClientExt, InstrumentedClientRequest},
     middleware::metrics::{RequestMetrics, RequestMetricsMiddleware},
-    middleware::route_formatter::{RouteFormatter, UuidWildcardFormatter},
+    middleware::route_formatter::{
+        PassThroughFormatter, RegexFormatter, RouteFormatter, UuidWildcardFormatter, UUID_REGEX,
+    },
     middleware::trace::RequestTracing,
 };

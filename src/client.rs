@@ -7,8 +7,7 @@ use actix_web::{
 };
 use futures::{future::TryFutureExt, Future, Stream};
 use opentelemetry::api::{
-    Context, FutureExt, HttpTextFormat, Injector, KeyValue, SpanKind, StatusCode, TraceContextExt,
-    Tracer, Value,
+    Context, FutureExt, Injector, KeyValue, SpanKind, StatusCode, TraceContextExt, Tracer, Value,
 };
 use opentelemetry::global;
 use serde::Serialize;
@@ -52,7 +51,6 @@ where
     RE: fmt::Debug,
 {
     let tracer = global::tracer("actix-client");
-    let injector = opentelemetry::api::B3Propagator::default();
     let span = tracer
         .span_builder(
             format!(
@@ -84,7 +82,9 @@ where
         .start(&tracer);
     let cx = Context::current_with_span(span);
 
-    injector.inject_context(&cx, &mut ActixClientCarrier::new(&mut request));
+    global::get_http_text_propagator(|injector| {
+        injector.inject_context(&cx, &mut ActixClientCarrier::new(&mut request))
+    });
 
     f(request)
         .with_context(cx.clone())

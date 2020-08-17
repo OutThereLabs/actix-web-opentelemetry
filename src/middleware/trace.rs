@@ -1,11 +1,10 @@
-use super::route_formatter::{RouteFormatter, UuidWildcardFormatter};
+use super::route_formatter::{PassThroughFormatter, RouteFormatter};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::Error;
 use futures::{
     future::{ok, FutureExt, Ready},
     Future,
 };
-use opentelemetry::api::trace::b3_propagator::B3Encoding;
 use opentelemetry::api::{
     self, Context, FutureExt as OtelFutureExt, KeyValue, StatusCode, TraceContextExt, Tracer, Value,
 };
@@ -31,13 +30,14 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 
 /// Request tracing middleware.
 ///
-/// Example:
+/// # Examples:
+///
 /// ```no_run
 /// #[macro_use]
 /// extern crate actix_web;
 ///
 /// use actix_web::{web, App, HttpServer};
-/// use actix_web_opentelemetry::RequestTracing;
+/// use actix_web_opentelemetry::{RequestTracing, RegexFormatter, UUID_REGEX};
 /// use opentelemetry::api;
 ///
 /// fn init_tracer() {
@@ -54,8 +54,9 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 /// async fn main() -> std::io::Result<()> {
 ///     init_tracer();
 ///     HttpServer::new(|| {
+///         let regex_formatter = RegexFormatter::new(UUID_REGEX, ":id").unwrap();
 ///         App::new()
-///             .wrap(RequestTracing::default())
+///             .wrap(RequestTracing::with_formatter(regex_formatter))
 ///             .service(web::resource("/").to(index))
 ///     })
 ///     .bind("127.0.0.1:8080")?
@@ -65,39 +66,48 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 ///```
 #[derive(Debug)]
 pub struct RequestTracing<R: RouteFormatter> {
-    header_encoding: B3Encoding,
     route_formatter: R,
 }
 
-impl Default for RequestTracing<UuidWildcardFormatter> {
+impl Default for RequestTracing<PassThroughFormatter> {
     fn default() -> Self {
         RequestTracing {
-            header_encoding: B3Encoding::MultipleHeader,
-            route_formatter: UuidWildcardFormatter::new(),
+            route_formatter: PassThroughFormatter,
         }
     }
 }
 
 impl<R: RouteFormatter> RequestTracing<R> {
-    /// Configures a request tracing middleware transformer.
+    /// Actix web middleware to trace each request in an OpenTelemetry span.
+    pub fn new() -> RequestTracing<PassThroughFormatter> {
+        RequestTracing::default()
+    }
+
+    /// Actix web middleware to trace each request in an OpenTelemetry span with
+    /// formatted routes.
     ///
-    /// This middleware supports both version of B3 headers.
-    ///  1. Single Header:
+    /// # Examples
     ///
-    ///    - X-B3: `{trace_id}-{span_id}-{sampling_state}-{parent_span_id}`
+    /// ```no_run
+    /// use actix_web::{web, App, HttpServer};
+    /// use actix_web_opentelemetry::{RegexFormatter, RequestTracing};
     ///
-    ///  2. Multiple Headers:
-    ///
-    ///    - X-B3-TraceId: `{trace_id}`
-    ///    - X-B3-ParentSpanId: `{parent_span_id}`
-    ///    - X-B3-SpanId: `{span_id}`
-    ///    - X-B3-Sampled: `{sampling_state}`
-    ///    - X-B3-Flags: `{debug_flag}`
-    pub fn new(header_encoding: B3Encoding, route_formatter: R) -> Self {
-        RequestTracing {
-            header_encoding,
-            route_formatter,
-        }
+    /// # #[actix_rt::main]
+    /// # async fn main() -> std::io::Result<()> {
+    /// // report /users/123 as /users/:id
+    /// HttpServer::new(move || {
+    ///     let formatter = RegexFormatter::new(r"\d+", ":id").unwrap();
+    ///     App::new()
+    ///         .wrap(RequestTracing::with_formatter(formatter))
+    ///         .service(web::resource("/users/{id}").to(|| async { "ok" }))
+    /// })
+    /// .bind("127.0.0.1:8080")?
+    /// .run()
+    /// .await
+    /// # }
+    /// ```
+    pub fn with_formatter(route_formatter: R) -> Self {
+        RequestTracing { route_formatter }
     }
 }
 
