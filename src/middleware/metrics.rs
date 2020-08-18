@@ -1,5 +1,5 @@
 //! # Metrics Middleware
-use crate::{RouteFormatter, UuidWildcardFormatter};
+use crate::{PassThroughFormatter, RouteFormatter};
 use actix_web::dev;
 use futures::{
     future::{self, FutureExt},
@@ -50,7 +50,7 @@ where
     }
 }
 
-impl<F> Default for RequestMetrics<api::NoopMeter, UuidWildcardFormatter, F>
+impl<F> Default for RequestMetrics<api::NoopMeter, PassThroughFormatter, F>
 where
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
@@ -60,7 +60,7 @@ where
         let http_requests_duration_seconds = sdk.new_f64_measure("", MetricOptions::default());
         RequestMetrics {
             sdk,
-            route_formatter: UuidWildcardFormatter::new(),
+            route_formatter: PassThroughFormatter,
             should_render_metrics: None,
             http_requests_total,
             http_requests_duration_seconds,
