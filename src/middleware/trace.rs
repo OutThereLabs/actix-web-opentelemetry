@@ -1,6 +1,6 @@
-use super::route_formatter::{PassThroughFormatter, RouteFormatter};
+use super::route_formatter::RouteFormatter;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::Error;
+use actix_web::{http::header, Error};
 use futures::{
     future::{ok, FutureExt, Ready},
     Future,
@@ -10,23 +10,24 @@ use opentelemetry::api::{
 };
 use opentelemetry::global;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::task::Poll;
 
 // Http common attributes
-static HTTP_METHOD_ATTRIBUTE: &str = "http.method";
-static HTTP_TARGET_ATTRIBUTE: &str = "http.target";
-static HTTP_SCHEME_ATTRIBUTE: &str = "http.scheme";
-static HTTP_STATUS_CODE_ATTRIBUTE: &str = "http.status_code";
-static HTTP_STATUS_TEXT_ATTRIBUTE: &str = "http.status_text";
-static HTTP_FLAVOR_ATTRIBUTE: &str = "http.flavor";
-static HTTP_USER_AGENT_ATTRIBUTE: &str = "http.user_agent";
+const HTTP_METHOD_ATTRIBUTE: &str = "http.method";
+const HTTP_TARGET_ATTRIBUTE: &str = "http.target";
+const HTTP_SCHEME_ATTRIBUTE: &str = "http.scheme";
+const HTTP_STATUS_CODE_ATTRIBUTE: &str = "http.status_code";
+const HTTP_STATUS_TEXT_ATTRIBUTE: &str = "http.status_text";
+const HTTP_FLAVOR_ATTRIBUTE: &str = "http.flavor";
+const HTTP_USER_AGENT_ATTRIBUTE: &str = "http.user_agent";
 
 // Http server attributes
-static HTTP_HOST_ATTRIBUTE: &str = "http.host";
-static HTTP_SERVER_NAME_ATTRIBUTE: &str = "http.server_name";
-static HTTP_ROUTE_ATTRIBUTE: &str = "http.route";
-static HTTP_CLIENT_IP_ATTRIBUTE: &str = "http.client_ip";
-static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
+const HTTP_HOST_ATTRIBUTE: &str = "http.host";
+const HTTP_SERVER_NAME_ATTRIBUTE: &str = "http.server_name";
+const HTTP_ROUTE_ATTRIBUTE: &str = "http.route";
+const HTTP_CLIENT_IP_ATTRIBUTE: &str = "http.client_ip";
+const NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 
 /// Request tracing middleware.
 ///
@@ -37,7 +38,7 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 /// extern crate actix_web;
 ///
 /// use actix_web::{web, App, HttpServer};
-/// use actix_web_opentelemetry::{RequestTracing, RegexFormatter, UUID_REGEX};
+/// use actix_web_opentelemetry::RequestTracing;
 /// use opentelemetry::api;
 ///
 /// fn init_tracer() {
@@ -50,13 +51,12 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 ///     "Hello world!"
 /// }
 ///
-/// #[actix_rt::main]
+/// #[actix_web::main]
 /// async fn main() -> std::io::Result<()> {
 ///     init_tracer();
 ///     HttpServer::new(|| {
-///         let regex_formatter = RegexFormatter::new(UUID_REGEX, ":id").unwrap();
 ///         App::new()
-///             .wrap(RequestTracing::with_formatter(regex_formatter))
+///             .wrap(RequestTracing::new())
 ///             .service(web::resource("/").to(index))
 ///     })
 ///     .bind("127.0.0.1:8080")?
@@ -64,22 +64,14 @@ static NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 ///     .await
 /// }
 ///```
-#[derive(Debug)]
-pub struct RequestTracing<R: RouteFormatter> {
-    route_formatter: R,
+#[derive(Default, Debug)]
+pub struct RequestTracing {
+    route_formatter: Option<Rc<dyn RouteFormatter + 'static>>,
 }
 
-impl Default for RequestTracing<PassThroughFormatter> {
-    fn default() -> Self {
-        RequestTracing {
-            route_formatter: PassThroughFormatter,
-        }
-    }
-}
-
-impl<R: RouteFormatter> RequestTracing<R> {
+impl RequestTracing {
     /// Actix web middleware to trace each request in an OpenTelemetry span.
-    pub fn new() -> RequestTracing<PassThroughFormatter> {
+    pub fn new() -> RequestTracing {
         RequestTracing::default()
     }
 
@@ -90,15 +82,25 @@ impl<R: RouteFormatter> RequestTracing<R> {
     ///
     /// ```no_run
     /// use actix_web::{web, App, HttpServer};
-    /// use actix_web_opentelemetry::{RegexFormatter, RequestTracing};
+    /// use actix_web_opentelemetry::{RouteFormatter, RequestTracing};
     ///
-    /// # #[actix_rt::main]
+    /// # #[actix_web::main]
     /// # async fn main() -> std::io::Result<()> {
-    /// // report /users/123 as /users/:id
+    ///
+    ///
+    /// #[derive(Debug)]
+    /// struct MyLowercaseFormatter;
+    ///
+    /// impl RouteFormatter for MyLowercaseFormatter {
+    ///     fn format(&self, path: &str) -> String {
+    ///         path.to_lowercase()
+    ///     }
+    /// }
+    ///
+    /// // report /users/{id} as /users/:id
     /// HttpServer::new(move || {
-    ///     let formatter = RegexFormatter::new(r"\d+", ":id").unwrap();
     ///     App::new()
-    ///         .wrap(RequestTracing::with_formatter(formatter))
+    ///         .wrap(RequestTracing::with_formatter(MyLowercaseFormatter))
     ///         .service(web::resource("/users/{id}").to(|| async { "ok" }))
     /// })
     /// .bind("127.0.0.1:8080")?
@@ -106,22 +108,23 @@ impl<R: RouteFormatter> RequestTracing<R> {
     /// .await
     /// # }
     /// ```
-    pub fn with_formatter(route_formatter: R) -> Self {
-        RequestTracing { route_formatter }
+    pub fn with_formatter<T: RouteFormatter + 'static>(route_formatter: T) -> Self {
+        RequestTracing {
+            route_formatter: Some(Rc::new(route_formatter)),
+        }
     }
 }
 
-impl<S, B, R> Transform<S> for RequestTracing<R>
+impl<S, B> Transform<S> for RequestTracing
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    R: RouteFormatter + Clone,
 {
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = RequestTracingMiddleware<S, R>;
+    type Transform = RequestTracingMiddleware<S>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
@@ -134,19 +137,18 @@ where
 }
 
 #[derive(Debug)]
-pub struct RequestTracingMiddleware<S, R: RouteFormatter> {
+pub struct RequestTracingMiddleware<S> {
     service: S,
-    route_formatter: R,
+    route_formatter: Option<Rc<dyn RouteFormatter>>,
 }
 
-impl<S, B, R> RequestTracingMiddleware<S, R>
+impl<S, B> RequestTracingMiddleware<S>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    R: RouteFormatter,
 {
-    fn new(service: S, route_formatter: R) -> Self {
+    fn new(service: S, route_formatter: Option<Rc<dyn RouteFormatter>>) -> Self {
         RequestTracingMiddleware {
             service,
             route_formatter,
@@ -154,12 +156,11 @@ where
     }
 }
 
-impl<S, B, R> Service for RequestTracingMiddleware<S, R>
+impl<S, B> Service for RequestTracingMiddleware<S>
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
-    R: RouteFormatter,
 {
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
@@ -176,7 +177,12 @@ where
         })
         .attach();
         let tracer = global::tracer("actix-web-opentelemetry");
-        let http_route = self.route_formatter.format(req.uri().path());
+        let mut http_route = req
+            .match_pattern()
+            .unwrap_or_else(|| "unmatched".to_string());
+        if let Some(formatter) = &self.route_formatter {
+            http_route = formatter.format(&http_route);
+        }
         let mut builder = tracer.span_builder(&http_route);
         builder.span_kind = Some(api::SpanKind::Server);
         let mut attributes = vec![
@@ -201,12 +207,12 @@ where
         }
         if let Some(user_agent) = req
             .headers()
-            .get("User-Agent")
+            .get(header::USER_AGENT)
             .and_then(|s| s.to_str().ok())
         {
             attributes.push(KeyValue::new(HTTP_USER_AGENT_ATTRIBUTE, user_agent))
         }
-        if let Some(remote) = req.connection_info().remote() {
+        if let Some(remote) = req.connection_info().realip_remote_addr() {
             attributes.push(KeyValue::new(HTTP_CLIENT_IP_ATTRIBUTE, remote))
         }
         builder.attributes = Some(attributes);

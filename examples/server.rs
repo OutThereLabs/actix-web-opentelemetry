@@ -1,5 +1,5 @@
 use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-use actix_web_opentelemetry::{RegexFormatter, RequestMetrics, RequestTracing, UUID_REGEX};
+use actix_web_opentelemetry::{RequestMetrics, RequestTracing};
 use opentelemetry::{api::KeyValue, global, sdk};
 use std::sync::Arc;
 
@@ -34,23 +34,20 @@ fn init_tracer() -> std::io::Result<()> {
     Ok(())
 }
 
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     init_tracer()?;
     let meter = sdk::Meter::new("actix_server");
-    let regex_formatter = RegexFormatter::new(UUID_REGEX, "*").unwrap();
     let request_metrics = RequestMetrics::new(
         meter,
-        regex_formatter.clone(),
         Some(|req: &dev::ServiceRequest| {
             req.path() == "/metrics" && req.method() == http::Method::GET
         }),
     );
     HttpServer::new(move || {
-        let regex_formatter = regex_formatter.clone();
         App::new()
             .wrap(request_metrics.clone())
-            .wrap(RequestTracing::with_formatter(regex_formatter))
+            .wrap(RequestTracing::new())
             .service(web::resource("/users/{id}").to(index))
     })
     .bind("127.0.0.1:8080")?

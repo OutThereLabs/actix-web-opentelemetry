@@ -44,7 +44,7 @@
 //!     "Hello world!"
 //! }
 //!
-//! #[actix_rt::main]
+//! #[actix_web::main]
 //! async fn main() -> std::io::Result<()> {
 //!     init_tracer();
 //!     HttpServer::new(|| {
@@ -68,8 +68,6 @@ mod middleware;
 pub use {
     client::{with_tracing, ClientExt, InstrumentedClientRequest},
     middleware::metrics::{RequestMetrics, RequestMetricsMiddleware},
-    middleware::route_formatter::{
-        PassThroughFormatter, RegexFormatter, RouteFormatter, UuidWildcardFormatter, UUID_REGEX,
-    },
+    middleware::route_formatter::RouteFormatter,
     middleware::trace::RequestTracing,
 };
