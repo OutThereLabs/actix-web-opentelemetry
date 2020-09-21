@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.6.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.5.0...v0.6.0)
+
+### Changed
+
+- Upgrade `actix-web` to version 3 #24
+- `RequestMetrics` constructor longer accept a route_formatter. Can be added via `with_route_formatter` #24
+
+### Removed
+
+- Remove obsolute `UuidWildcardFormatter` as actix 3 supports match patterns #24
+
+### Fixed
+
+- Client will now properly inject context using the globally configured
+  propagator.
+
 ## [v0.5.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.4.0...v0.5.0)
 
 ### Added
@@ -11,7 +27,6 @@
 
 - Update to OpenTelemetry v0.8.0 #18
 - Deprecated `with_tracing` fn. Use `ClientExt` instead. #17
-
 
 ## [v0.4.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.3.0...v0.4.0)
 
