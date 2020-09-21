@@ -1,5 +1,5 @@
 //! # Metrics Middleware
-use crate::{PassThroughFormatter, RouteFormatter};
+use crate::RouteFormatter;
 use actix_web::dev;
 use futures::{
     future::{self, FutureExt},
@@ -16,27 +16,25 @@ use std::time::SystemTime;
 
 /// Request metrics tracking
 #[derive(Debug)]
-pub struct RequestMetrics<M, R, F>
+pub struct RequestMetrics<M, F>
 where
     M: api::Meter,
     M::I64Counter: Clone,
     M::F64Measure: Clone,
-    R: RouteFormatter,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     sdk: Arc<M>,
-    route_formatter: R,
+    route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
     should_render_metrics: Option<F>,
     http_requests_total: M::I64Counter,
     http_requests_duration_seconds: M::F64Measure,
 }
 
-impl<M, R, F> Clone for RequestMetrics<M, R, F>
+impl<M, F> Clone for RequestMetrics<M, F>
 where
     M: api::Meter,
     M::I64Counter: Clone,
     M::F64Measure: Clone,
-    R: RouteFormatter + Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     fn clone(&self) -> Self {
@@ -50,7 +48,7 @@ where
     }
 }
 
-impl<F> Default for RequestMetrics<api::NoopMeter, PassThroughFormatter, F>
+impl<F> Default for RequestMetrics<api::NoopMeter, F>
 where
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
@@ -60,7 +58,7 @@ where
         let http_requests_duration_seconds = sdk.new_f64_measure("", MetricOptions::default());
         RequestMetrics {
             sdk,
-            route_formatter: PassThroughFormatter,
+            route_formatter: None,
             should_render_metrics: None,
             http_requests_total,
             http_requests_duration_seconds,
@@ -68,16 +66,15 @@ where
     }
 }
 
-impl<M, R, F> RequestMetrics<M, R, F>
+impl<M, F> RequestMetrics<M, F>
 where
     M: api::Meter,
     M::I64Counter: Clone,
     M::F64Measure: Clone,
-    R: RouteFormatter,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     /// Create new `RequestMetrics`
-    pub fn new(sdk: M, route_formatter: R, should_render_metrics: Option<F>) -> Self {
+    pub fn new(sdk: M, should_render_metrics: Option<F>) -> Self {
         let standard_keys = vec![
             api::Key::new("route"),
             api::Key::new("method"),
@@ -98,11 +95,20 @@ where
         );
         RequestMetrics {
             sdk: Arc::new(sdk),
-            route_formatter,
+            route_formatter: None,
             should_render_metrics,
             http_requests_total,
             http_requests_duration_seconds,
         }
+    }
+
+    /// Add a route formatter to customize metrics match patterns
+    pub fn with_route_formatter<R>(mut self, route_formatter: R) -> Self
+    where
+        R: RouteFormatter + Send + Sync + 'static,
+    {
+        self.route_formatter = Some(Arc::new(route_formatter));
+        self
     }
 
     fn metrics(&self) -> String {
@@ -114,7 +120,7 @@ where
     }
 }
 
-impl<S, B, M, R, F> dev::Transform<S> for RequestMetrics<M, R, F>
+impl<S, B, M, F> dev::Transform<S> for RequestMetrics<M, F>
 where
     S: dev::Service<
         Request = dev::ServiceRequest,
@@ -126,13 +132,12 @@ where
     M: api::Meter + 'static,
     M::I64Counter: Clone,
     M::F64Measure: Clone,
-    R: RouteFormatter + Clone + 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
     type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
-    type Transform = RequestMetricsMiddleware<S, M, R, F>;
+    type Transform = RequestMetricsMiddleware<S, M, F>;
     type InitError = ();
     type Future = future::Ready<Result<Self::Transform, Self::InitError>>;
 
@@ -146,19 +151,18 @@ where
 
 /// Request metrics middleware
 #[allow(missing_debug_implementations)]
-pub struct RequestMetricsMiddleware<S, M, R, F>
+pub struct RequestMetricsMiddleware<S, M, F>
 where
     M: api::Meter,
     M::I64Counter: Clone,
     M::F64Measure: Clone,
-    R: RouteFormatter,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     service: S,
-    inner: Arc<RequestMetrics<M, R, F>>,
+    inner: Arc<RequestMetrics<M, F>>,
 }
 
-impl<S, B, M, R, F> dev::Service for RequestMetricsMiddleware<S, M, R, F>
+impl<S, B, M, F> dev::Service for RequestMetricsMiddleware<S, M, F>
 where
     S: dev::Service<
         Request = dev::ServiceRequest,
@@ -170,7 +174,6 @@ where
     M: api::Meter + 'static,
     M::I64Counter: Clone,
     M::F64Measure: Clone,
-    R: RouteFormatter + 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
     type Request = dev::ServiceRequest;
@@ -200,7 +203,12 @@ where
         } else {
             let timer = SystemTime::now();
             let request_metrics = self.inner.clone();
-            let route = request_metrics.route_formatter.format(req.path());
+            let mut route = req
+                .match_pattern()
+                .unwrap_or_else(|| "unmatched".to_string());
+            if let Some(formatter) = &self.inner.route_formatter {
+                route = formatter.format(&route);
+            }
             let method = req.method().as_str().to_string();
 
             Box::pin(self.service.call(req).map(move |res| {
@@ -213,7 +221,7 @@ where
                     ]);
                     request_metrics.http_requests_total.add(1, &standard_labels);
                     request_metrics.http_requests_duration_seconds.record(
-                        timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or(0.0),
+                        timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or_default(),
                         &standard_labels,
                     );
 

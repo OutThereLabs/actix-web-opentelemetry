@@ -49,7 +49,7 @@ fn init_tracer() -> io::Result<()> {
     Ok(())
 }
 
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() -> io::Result<()> {
     init_tracer()?;
     let client = client::Client::new();
