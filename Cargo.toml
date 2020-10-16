@@ -19,4 +19,4 @@ opentelemetry = "0.8"
 serde = "1.0"
 
 [dev-dependencies]
-opentelemetry-jaeger = "0.7"
+opentelemetry-jaeger = "0.8"
