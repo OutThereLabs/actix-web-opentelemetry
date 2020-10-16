@@ -15,7 +15,7 @@ edition = "2018"
 actix-http = "2.0"
 actix-web = "3.0"
 futures = "0.3"
-opentelemetry = "0.8"
+opentelemetry = "0.9"
 serde = "1.0"
 
 [dev-dependencies]
