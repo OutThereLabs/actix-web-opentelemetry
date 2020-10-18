@@ -17,4 +17,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --all-features --verbose

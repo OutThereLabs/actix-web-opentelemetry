@@ -11,12 +11,18 @@ keywords = ["actix", "actix-web", "opentelemetry", "jaeger", "prometheus"]
 license = "MIT"
 edition = "2018"
 
+[features]
+metrics = ["opentelemetry/metrics", "opentelemetry-prometheus", "prometheus"]
+
 [dependencies]
-actix-http = "2.0"
-actix-web = "3.0"
+actix-http = { version = "2.0", features = ["compress"] }
+actix-web = { version = "3.0", default-features = false, features = ["compress"] }
 futures = "0.3"
-opentelemetry = "0.8"
+opentelemetry = { version = "0.9", default-features = false, features = ["trace", "metrics", "tokio"] }
+opentelemetry-prometheus = { version = "0.2", optional = true }
+opentelemetry-semantic-conventions = "0.1"
+prometheus = { version = "0.10", default-features = false, optional = true }
 serde = "1.0"
 
 [dev-dependencies]
-opentelemetry-jaeger = "0.7"
+opentelemetry-jaeger = { version = "0.8", features = ["tokio"] }

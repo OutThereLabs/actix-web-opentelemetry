@@ -1,10 +1,9 @@
 use actix_web::client;
 use actix_web_opentelemetry::ClientExt;
-use opentelemetry::{api::KeyValue, global, sdk};
+use std::error::Error;
 use std::io;
-use std::sync::Arc;
 
-async fn execute_request(client: client::Client) -> Result<String, io::Error> {
+async fn execute_request(client: client::Client) -> io::Result<String> {
     let mut response = client
         .get("http://localhost:8080/users/103240ba-3d8d-4695-a176-e19cbc627483?a=1")
         .trace_request()
@@ -22,36 +21,12 @@ async fn execute_request(client: client::Client) -> Result<String, io::Error> {
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
 }
 
-fn init_tracer() -> io::Result<()> {
-    let exporter: opentelemetry_jaeger::Exporter = opentelemetry_jaeger::Exporter::builder()
-        .with_agent_endpoint("127.0.0.1:6831".parse().unwrap())
-        .with_process(opentelemetry_jaeger::Process {
-            service_name: "actix_client".to_string(),
-            tags: Vec::new(),
-        })
-        .init()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    let provider = sdk::Provider::builder()
-        .with_simple_exporter(exporter)
-        .with_config(sdk::Config {
-            default_sampler: Box::new(sdk::Sampler::AlwaysOn),
-            resource: Arc::new(sdk::Resource::new(vec![
-                KeyValue::new("service.name", "demo-client"),
-                KeyValue::new("service.namespace", "demo"),
-                KeyValue::new("service.instance.id", "2"),
-                KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-            ])),
-            ..Default::default()
-        })
-        .build();
-    global::set_provider(provider);
-
-    Ok(())
-}
-
 #[actix_web::main]
-async fn main() -> io::Result<()> {
-    init_tracer()?;
+async fn main() -> Result<(), Box<dyn Error>> {
+    let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("actix_client")
+        .install()?;
+
     let client = client::Client::new();
     let response = execute_request(client).await?;
 
