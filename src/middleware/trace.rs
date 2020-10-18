@@ -149,6 +149,7 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
+    #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -220,6 +221,7 @@ where
                 Ok(ok_res) => {
                     let span = cx.span();
                     span.set_attribute(HTTP_STATUS_CODE.u64(ok_res.status().as_u16() as u64));
+                    #[allow(clippy::match_overlapping_arm)]
                     let status_code = match ok_res.status().as_u16() {
                         100..=399 => StatusCode::OK,
                         401 => StatusCode::Unauthenticated,

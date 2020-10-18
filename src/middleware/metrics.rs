@@ -192,6 +192,7 @@ where
     type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
+    #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
