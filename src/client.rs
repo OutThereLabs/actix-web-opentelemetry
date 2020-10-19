@@ -7,105 +7,17 @@ use actix_web::{
 };
 use futures::{future::TryFutureExt, Future, Stream};
 use opentelemetry::api::{
-    Context, FutureExt, Injector, KeyValue, SpanKind, StatusCode, TraceContextExt, Tracer, Value,
+    propagation::Injector,
+    trace::{SpanKind, StatusCode, TraceContextExt, Tracer},
+    Context,
 };
 use opentelemetry::global;
+use opentelemetry_semantic_conventions::trace::{
+    HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
+};
 use serde::Serialize;
 use std::fmt;
 use std::str::FromStr;
-
-static HTTP_METHOD_ATTRIBUTE: &str = "http.method";
-static HTTP_URL_ATTRIBUTE: &str = "http.url";
-static HTTP_STATUS_CODE_ATTRIBUTE: &str = "http.status_code";
-static HTTP_STATUS_TEXT_ATTRIBUTE: &str = "http.status_text";
-static HTTP_FLAVOR_ATTRIBUTE: &str = "http.flavor";
-
-/// Trace an `actix_web::client::Client` request.
-///
-/// Example:
-/// ```no_run
-/// use actix_web::client;
-/// use futures::Future;
-///
-/// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
-///     let mut res = actix_web_opentelemetry::with_tracing(
-///         client.get("http://localhost:8080"),
-///         |request| request.send()
-///     )
-///     .await;
-///
-///     res.and_then(|res| {
-///         println!("Response: {:?}", res);
-///         Ok(())
-///     })
-/// }
-/// ```
-#[deprecated(since = "0.5.0", note = "Please use ClientExt::trace_request instead")]
-pub async fn with_tracing<F, R, RE, S>(
-    mut request: ClientRequest,
-    f: F,
-) -> Result<ClientResponse<S>, RE>
-where
-    F: FnOnce(ClientRequest) -> R,
-    R: Future<Output = Result<ClientResponse<S>, RE>>,
-    RE: fmt::Debug,
-{
-    let tracer = global::tracer("actix-client");
-    let span = tracer
-        .span_builder(
-            format!(
-                "{} {}{}{}",
-                request.get_method(),
-                request
-                    .get_uri()
-                    .scheme()
-                    .map(|s| format!("{}://", s.as_str()))
-                    .unwrap_or_else(String::new),
-                request
-                    .get_uri()
-                    .authority()
-                    .map(|s| s.as_str())
-                    .unwrap_or(""),
-                request.get_uri().path()
-            )
-            .as_str(),
-        )
-        .with_kind(SpanKind::Client)
-        .with_attributes(vec![
-            KeyValue::new(HTTP_METHOD_ATTRIBUTE, request.get_method().as_str()),
-            KeyValue::new(HTTP_URL_ATTRIBUTE, request.get_uri().to_string().as_str()),
-            KeyValue::new(
-                HTTP_FLAVOR_ATTRIBUTE,
-                format!("{:?}", request.get_version()).replace("HTTP/", ""),
-            ),
-        ])
-        .start(&tracer);
-    let cx = Context::current_with_span(span);
-
-    global::get_http_text_propagator(|injector| {
-        injector.inject_context(&cx, &mut ActixClientCarrier::new(&mut request))
-    });
-
-    f(request)
-        .with_context(cx.clone())
-        .inspect_ok(|ok_result| {
-            let span = cx.span();
-            span.set_attribute(KeyValue::new(
-                HTTP_STATUS_CODE_ATTRIBUTE,
-                Value::U64(ok_result.status().as_u16() as u64),
-            ));
-            if let Some(reason) = ok_result.status().canonical_reason() {
-                span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
-            }
-            span.end();
-        })
-        .inspect_err(|err| {
-            let span = cx.span();
-            span.set_status(StatusCode::Internal, format!("{:?}", err));
-            span.end();
-        })
-        .await
-}
 
 /// A wrapper for the actix-web [`ClientRequest`].
 ///
@@ -129,6 +41,7 @@ pub trait ClientExt {
     ///
     /// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
+    ///         // Add `trace_request` before `send` to any awc request to add instrumentation
     ///         .trace_request()
     ///         .send()
     ///         .await?;
@@ -154,6 +67,8 @@ pub trait ClientExt {
     ///
     /// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
+    ///         // Add `trace_request_with_context` before `send` to any awc request to
+    ///         // add instrumentation
     ///         .trace_request_with_context(Context::current())
     ///         .send()
     ///         .await?;
@@ -226,6 +141,16 @@ impl InstrumentedClientRequest {
         R: Future<Output = AwcResult>,
     {
         let tracer = global::tracer("actix-client");
+        let mut attributes = vec![
+            HTTP_METHOD.string(self.request.get_method().as_str()),
+            HTTP_URL.string(self.request.get_uri().to_string()),
+            HTTP_FLAVOR.string(format!("{:?}", self.request.get_version()).replace("HTTP/", "")),
+        ];
+
+        if let Some(peer_addr) = self.request.get_peer_addr() {
+            attributes.push(NET_PEER_IP.string(peer_addr.to_string()));
+        }
+
         let span = tracer
             .span_builder(
                 format!(
@@ -246,21 +171,11 @@ impl InstrumentedClientRequest {
                 .as_str(),
             )
             .with_kind(SpanKind::Client)
-            .with_attributes(vec![
-                KeyValue::new(HTTP_METHOD_ATTRIBUTE, self.request.get_method().as_str()),
-                KeyValue::new(
-                    HTTP_URL_ATTRIBUTE,
-                    self.request.get_uri().to_string().as_str(),
-                ),
-                KeyValue::new(
-                    HTTP_FLAVOR_ATTRIBUTE,
-                    format!("{:?}", self.request.get_version()).replace("HTTP/", ""),
-                ),
-            ])
+            .with_attributes(attributes)
             .start(&tracer);
         let cx = self.cx.with_span(span);
 
-        global::get_http_text_propagator(|injector| {
+        global::get_text_map_propagator(|injector| {
             injector.inject_context(&cx, &mut ActixClientCarrier::new(&mut self.request));
         });
 
@@ -273,13 +188,7 @@ impl InstrumentedClientRequest {
 
 fn record_response<T>(response: &ClientResponse<T>, cx: &Context) {
     let span = cx.span();
-    span.set_attribute(KeyValue::new(
-        HTTP_STATUS_CODE_ATTRIBUTE,
-        Value::U64(response.status().as_u16() as u64),
-    ));
-    if let Some(reason) = response.status().canonical_reason() {
-        span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
-    }
+    span.set_attribute(HTTP_STATUS_CODE.u64(response.status().as_u16() as u64));
     span.end();
 }
 

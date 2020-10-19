@@ -5,41 +5,67 @@ use futures::{
     future::{self, FutureExt},
     Future,
 };
-use opentelemetry::{
-    api::{self, Counter, Measure, Meter, MetricOptions},
-    exporter::metrics::prometheus::{self, Encoder},
+use opentelemetry::api::{
+    metrics::{
+        noop::NoopMeterProvider, Counter, Meter, MeterProvider, MetricsError, ValueRecorder,
+    },
+    Key,
 };
+use opentelemetry::global;
+use opentelemetry_prometheus::PrometheusExporter;
+use prometheus::{Encoder, TextEncoder};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::SystemTime;
 
 /// Request metrics tracking
+///
+/// # Examples
+///
+/// ```no_run
+/// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
+/// use actix_web_opentelemetry::RequestMetrics;
+/// use opentelemetry::global;
+///
+/// # async fn start_server() -> std::io::Result<()> {
+/// let exporter = opentelemetry_prometheus::exporter().init();
+/// let meter = global::meter("actix_web");
+///
+/// // Optional predicate to determine which requests render the prometheus metrics
+/// let metrics_route = |req: &dev::ServiceRequest| {
+///     req.path() == "/metrics" && req.method() == http::Method::GET
+/// };
+///
+/// // Request metrics middleware
+/// let request_metrics = RequestMetrics::new(meter, Some(metrics_route), Some(exporter));
+///
+/// // Run actix server, metrics are now available at http://localhost:8080/metrics
+/// HttpServer::new(move || App::new().wrap(request_metrics.clone()))
+///     .bind("localhost:8080")?
+///     .run()
+///     .await
+/// # }
+/// ```
 #[derive(Debug)]
-pub struct RequestMetrics<M, F>
+pub struct RequestMetrics<F>
 where
-    M: api::Meter,
-    M::I64Counter: Clone,
-    M::F64Measure: Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
-    sdk: Arc<M>,
+    exporter: PrometheusExporter,
     route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
     should_render_metrics: Option<F>,
-    http_requests_total: M::I64Counter,
-    http_requests_duration_seconds: M::F64Measure,
+    http_requests_total: Counter<u64>,
+    http_requests_duration_seconds: ValueRecorder<f64>,
 }
 
-impl<M, F> Clone for RequestMetrics<M, F>
+impl<F> Clone for RequestMetrics<F>
 where
-    M: api::Meter,
-    M::I64Counter: Clone,
-    M::F64Measure: Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     fn clone(&self) -> Self {
         RequestMetrics {
-            sdk: self.sdk.clone(),
+            exporter: self.exporter.clone(),
             route_formatter: self.route_formatter.clone(),
             should_render_metrics: self.should_render_metrics.clone(),
             http_requests_total: self.http_requests_total.clone(),
@@ -48,53 +74,46 @@ where
     }
 }
 
-impl<F> Default for RequestMetrics<api::NoopMeter, F>
+impl<F> Default for RequestMetrics<F>
 where
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     fn default() -> Self {
-        let sdk = Arc::new(api::NoopMeter {});
-        let http_requests_total = sdk.new_i64_counter("", MetricOptions::default());
-        let http_requests_duration_seconds = sdk.new_f64_measure("", MetricOptions::default());
-        RequestMetrics {
-            sdk,
-            route_formatter: None,
-            should_render_metrics: None,
-            http_requests_total,
-            http_requests_duration_seconds,
-        }
+        let provider = NoopMeterProvider;
+        let meter = provider.meter("noop");
+        RequestMetrics::new(meter, None, None)
     }
 }
 
-impl<M, F> RequestMetrics<M, F>
+const ROUTE_KEY: Key = Key::from_static_str("route");
+const METHOD_KEY: Key = Key::from_static_str("method");
+const STATUS_KEY: Key = Key::from_static_str("status");
+
+impl<F> RequestMetrics<F>
 where
-    M: api::Meter,
-    M::I64Counter: Clone,
-    M::F64Measure: Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     /// Create new `RequestMetrics`
-    pub fn new(sdk: M, should_render_metrics: Option<F>) -> Self {
-        let standard_keys = vec![
-            api::Key::new("route"),
-            api::Key::new("method"),
-            api::Key::new("status"),
-        ];
-        let http_requests_total = sdk.new_i64_counter(
-            "http_requests_total",
-            MetricOptions::default()
-                .with_description("HTTP requests per route")
-                .with_keys(standard_keys.clone()),
-        );
-        let http_requests_duration_seconds = sdk.new_f64_measure(
-            "http_requests_duration",
-            MetricOptions::default()
-                .with_description("HTTP request duration per route")
-                .with_unit(api::Unit::new("seconds"))
-                .with_keys(standard_keys),
-        );
+    pub fn new(
+        meter: Meter,
+        should_render_metrics: Option<F>,
+        exporter: Option<PrometheusExporter>,
+    ) -> Self {
+        let exporter = exporter.unwrap_or_else(|| opentelemetry_prometheus::exporter().init());
+        let http_requests_total = meter
+            .u64_counter("http_requests_total")
+            .with_description("HTTP requests per route")
+            .init();
+
+        let http_requests_duration_seconds = meter
+            .f64_value_recorder("http_requests_duration")
+            .with_description("HTTP request duration per route")
+            // TODO: https://github.com/open-telemetry/opentelemetry-rust/issues/276
+            // .with_unit(Unit::new("seconds"))
+            .init();
+
         RequestMetrics {
-            sdk: Arc::new(sdk),
+            exporter,
             route_formatter: None,
             should_render_metrics,
             http_requests_total,
@@ -112,15 +131,18 @@ where
     }
 
     fn metrics(&self) -> String {
-        let mut buffer = vec![];
-        prometheus::TextEncoder::new()
-            .encode(&prometheus::gather(), &mut buffer)
-            .unwrap();
-        String::from_utf8(buffer).unwrap()
+        let encoder = TextEncoder::new();
+        let metric_families = self.exporter.registry().gather();
+        let mut buf = Vec::new();
+        if let Err(err) = encoder.encode(&metric_families[..], &mut buf) {
+            global::handle_error(MetricsError::Other(err.to_string()));
+        }
+
+        String::from_utf8(buf).unwrap_or_default()
     }
 }
 
-impl<S, B, M, F> dev::Transform<S> for RequestMetrics<M, F>
+impl<S, B, F> dev::Transform<S> for RequestMetrics<F>
 where
     S: dev::Service<
         Request = dev::ServiceRequest,
@@ -129,15 +151,12 @@ where
     >,
     S::Future: 'static,
     B: 'static,
-    M: api::Meter + 'static,
-    M::I64Counter: Clone,
-    M::F64Measure: Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
     type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
-    type Transform = RequestMetricsMiddleware<S, M, F>;
+    type Transform = RequestMetricsMiddleware<S, F>;
     type InitError = ();
     type Future = future::Ready<Result<Self::Transform, Self::InitError>>;
 
@@ -151,18 +170,15 @@ where
 
 /// Request metrics middleware
 #[allow(missing_debug_implementations)]
-pub struct RequestMetricsMiddleware<S, M, F>
+pub struct RequestMetricsMiddleware<S, F>
 where
-    M: api::Meter,
-    M::I64Counter: Clone,
-    M::F64Measure: Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     service: S,
-    inner: Arc<RequestMetrics<M, F>>,
+    inner: Arc<RequestMetrics<F>>,
 }
 
-impl<S, B, M, F> dev::Service for RequestMetricsMiddleware<S, M, F>
+impl<S, B, F> dev::Service for RequestMetricsMiddleware<S, F>
 where
     S: dev::Service<
         Request = dev::ServiceRequest,
@@ -171,14 +187,12 @@ where
     >,
     S::Future: 'static,
     B: 'static,
-    M: api::Meter + 'static,
-    M::I64Counter: Clone,
-    M::F64Measure: Clone,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
     type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
+    #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -203,9 +217,7 @@ where
         } else {
             let timer = SystemTime::now();
             let request_metrics = self.inner.clone();
-            let mut route = req
-                .match_pattern()
-                .unwrap_or_else(|| "unmatched".to_string());
+            let mut route = req.match_pattern().unwrap_or_else(|| "default".to_string());
             if let Some(formatter) = &self.inner.route_formatter {
                 route = formatter.format(&route);
             }
@@ -214,15 +226,15 @@ where
             Box::pin(self.service.call(req).map(move |res| {
                 // Ignore actix errors for metrics
                 if let Ok(res) = res {
-                    let standard_labels = request_metrics.sdk.labels(vec![
-                        api::KeyValue::new("route", route.as_str()),
-                        api::KeyValue::new("method", method.as_str()),
-                        api::KeyValue::new("status", api::Value::U64(res.status().as_u16() as u64)),
-                    ]);
-                    request_metrics.http_requests_total.add(1, &standard_labels);
+                    let labels = vec![
+                        ROUTE_KEY.string(route),
+                        METHOD_KEY.string(method),
+                        STATUS_KEY.u64(res.status().as_u16() as u64),
+                    ];
+                    request_metrics.http_requests_total.add(1, &labels);
                     request_metrics.http_requests_duration_seconds.record(
                         timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or_default(),
-                        &standard_labels,
+                        &labels,
                     );
 
                     Ok(res)

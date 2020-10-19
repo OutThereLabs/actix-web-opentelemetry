@@ -1,54 +1,41 @@
-use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-use actix_web_opentelemetry::{RequestMetrics, RequestTracing};
-use opentelemetry::{api::KeyValue, global, sdk};
-use std::sync::Arc;
+use actix_web::{web, App, HttpRequest, HttpServer};
+use actix_web_opentelemetry::RequestTracing;
+use std::io;
 
 async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
     "Hello world!"
 }
 
-fn init_tracer() -> std::io::Result<()> {
-    let exporter: opentelemetry_jaeger::Exporter = opentelemetry_jaeger::Exporter::builder()
-        .with_agent_endpoint("127.0.0.1:6831".parse().unwrap())
-        .with_process(opentelemetry_jaeger::Process {
-            service_name: "actix_server".to_string(),
-            tags: Vec::new(),
-        })
-        .init()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    let provider = sdk::Provider::builder()
-        .with_simple_exporter(exporter)
-        .with_config(sdk::Config {
-            default_sampler: Box::new(sdk::Sampler::AlwaysOn),
-            resource: Arc::new(sdk::Resource::new(vec![
-                KeyValue::new("service.name", "demo-backend"),
-                KeyValue::new("service.namespace", "demo"),
-                KeyValue::new("service.instance.id", "1"),
-                KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-            ])),
-            ..Default::default()
-        })
-        .build();
-    global::set_provider(provider);
-
-    Ok(())
-}
-
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    init_tracer()?;
-    let meter = sdk::Meter::new("actix_server");
-    let request_metrics = RequestMetrics::new(
-        meter,
-        Some(|req: &dev::ServiceRequest| {
-            req.path() == "/metrics" && req.method() == http::Method::GET
+async fn main() -> io::Result<()> {
+    // Start a new jaeger trace pipeline
+    let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("actix_server")
+        .install()
+        .expect("pipeline install error");
+
+    // Start a new prometheus metrics pipeline if --features metrics is used
+    #[cfg(feature = "metrics")]
+    let exporter = opentelemetry_prometheus::exporter().init();
+
+    #[cfg(feature = "metrics")]
+    let request_metrics = actix_web_opentelemetry::RequestMetrics::new(
+        opentelemetry::global::meter("actix_web"),
+        Some(|req: &actix_web::dev::ServiceRequest| {
+            req.path() == "/metrics" && req.method() == actix_web::http::Method::GET
         }),
+        Some(exporter),
     );
+
     HttpServer::new(move || {
-        App::new()
-            .wrap(request_metrics.clone())
+        let app = App::new()
             .wrap(RequestTracing::new())
-            .service(web::resource("/users/{id}").to(index))
+            .service(web::resource("/users/{id}").to(index));
+
+        #[cfg(feature = "metrics")]
+        let app = app.wrap(request_metrics.clone());
+
+        app
     })
     .bind("127.0.0.1:8080")?
     .run()

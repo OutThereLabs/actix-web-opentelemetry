@@ -6,46 +6,26 @@ use futures::{
     Future,
 };
 use opentelemetry::api::{
-    self, Context, FutureExt as OtelFutureExt, KeyValue, StatusCode, TraceContextExt, Tracer, Value,
+    propagation::Extractor,
+    trace::{FutureExt as OtelFutureExt, SpanKind, StatusCode, TraceContextExt, Tracer},
+    Context,
 };
 use opentelemetry::global;
+use opentelemetry_semantic_conventions::trace::{
+    HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_SERVER_NAME,
+    HTTP_STATUS_CODE, HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
+};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
-
-// Http common attributes
-const HTTP_METHOD_ATTRIBUTE: &str = "http.method";
-const HTTP_TARGET_ATTRIBUTE: &str = "http.target";
-const HTTP_SCHEME_ATTRIBUTE: &str = "http.scheme";
-const HTTP_STATUS_CODE_ATTRIBUTE: &str = "http.status_code";
-const HTTP_STATUS_TEXT_ATTRIBUTE: &str = "http.status_text";
-const HTTP_FLAVOR_ATTRIBUTE: &str = "http.flavor";
-const HTTP_USER_AGENT_ATTRIBUTE: &str = "http.user_agent";
-
-// Http server attributes
-const HTTP_HOST_ATTRIBUTE: &str = "http.host";
-const HTTP_SERVER_NAME_ATTRIBUTE: &str = "http.server_name";
-const HTTP_ROUTE_ATTRIBUTE: &str = "http.route";
-const HTTP_CLIENT_IP_ATTRIBUTE: &str = "http.client_ip";
-const NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 
 /// Request tracing middleware.
 ///
 /// # Examples:
 ///
 /// ```no_run
-/// #[macro_use]
-/// extern crate actix_web;
-///
 /// use actix_web::{web, App, HttpServer};
 /// use actix_web_opentelemetry::RequestTracing;
-/// use opentelemetry::api;
-///
-/// fn init_tracer() {
-///     // Replace this no-op provider with something like:
-///     // https://docs.rs/opentelemetry-jaeger
-///     opentelemetry::global::set_provider(api::NoopProvider {});
-/// }
 ///
 /// async fn index() -> &'static str {
 ///     "Hello world!"
@@ -53,7 +33,11 @@ const NET_HOST_PORT_ATTRIBUTE: &str = "net.host.port";
 ///
 /// #[actix_web::main]
 /// async fn main() -> std::io::Result<()> {
-///     init_tracer();
+///     // Install an OpenTelemetry trace pipeline.
+///     // Swap for https://docs.rs/opentelemetry-jaeger or other compatible
+///     // exporter to send trace information to your collector.
+///     opentelemetry::exporter::trace::stdout::new_pipeline().install();
+///
 ///     HttpServer::new(|| {
 ///         App::new()
 ///             .wrap(RequestTracing::new())
@@ -165,6 +149,7 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
+    #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -172,52 +157,61 @@ where
     }
 
     fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
-        let _parent_context = global::get_http_text_propagator(|propagator| {
+        let _parent_context = global::get_text_map_propagator(|propagator| {
             propagator.extract(&RequestHeaderCarrier::new(req.headers_mut()))
         })
         .attach();
         let tracer = global::tracer("actix-web-opentelemetry");
-        let mut http_route = req
-            .match_pattern()
-            .unwrap_or_else(|| "unmatched".to_string());
+        let mut http_route = req.match_pattern().unwrap_or_else(|| "default".to_string());
         if let Some(formatter) = &self.route_formatter {
             http_route = formatter.format(&http_route);
         }
+        let conn_info = req.connection_info();
         let mut builder = tracer.span_builder(&http_route);
-        builder.span_kind = Some(api::SpanKind::Server);
+        builder.span_kind = Some(SpanKind::Server);
         let mut attributes = vec![
-            KeyValue::new(HTTP_METHOD_ATTRIBUTE, req.method().as_str()),
-            KeyValue::new(
-                HTTP_FLAVOR_ATTRIBUTE,
-                format!("{:?}", req.version()).replace("HTTP/", ""),
-            ),
-            KeyValue::new(HTTP_HOST_ATTRIBUTE, req.connection_info().host()),
-            KeyValue::new(HTTP_ROUTE_ATTRIBUTE, http_route),
-            KeyValue::new(HTTP_SCHEME_ATTRIBUTE, req.connection_info().scheme()),
+            HTTP_METHOD.string(req.method().as_str()),
+            HTTP_FLAVOR.string(format!("{:?}", req.version()).replace("HTTP/", "")),
+            HTTP_HOST.string(conn_info.host()),
+            HTTP_ROUTE.string(http_route),
+            HTTP_SCHEME.string(conn_info.scheme()),
         ];
         let server_name = req.app_config().host();
-        if server_name != req.connection_info().host() {
-            attributes.push(KeyValue::new(HTTP_SERVER_NAME_ATTRIBUTE, server_name));
+        if server_name != conn_info.host() {
+            attributes.push(HTTP_SERVER_NAME.string(server_name));
         }
-        if let Some(port) = req.connection_info().host().split_terminator(':').nth(1) {
-            attributes.push(KeyValue::new(NET_HOST_PORT_ATTRIBUTE, port))
+        if let Some(port) = conn_info
+            .host()
+            .split_terminator(':')
+            .nth(1)
+            .and_then(|port| port.parse().ok())
+        {
+            attributes.push(NET_HOST_PORT.u64(port))
         }
         if let Some(path) = req.uri().path_and_query() {
-            attributes.push(KeyValue::new(HTTP_TARGET_ATTRIBUTE, path.as_str()))
+            attributes.push(HTTP_TARGET.string(path.as_str()))
         }
         if let Some(user_agent) = req
             .headers()
             .get(header::USER_AGENT)
             .and_then(|s| s.to_str().ok())
         {
-            attributes.push(KeyValue::new(HTTP_USER_AGENT_ATTRIBUTE, user_agent))
+            attributes.push(HTTP_USER_AGENT.string(user_agent))
         }
-        if let Some(remote) = req.connection_info().realip_remote_addr() {
-            attributes.push(KeyValue::new(HTTP_CLIENT_IP_ATTRIBUTE, remote))
+        let remote_addr = conn_info.realip_remote_addr();
+        if let Some(remote) = remote_addr {
+            attributes.push(HTTP_CLIENT_IP.string(remote))
+        }
+        if let Some(peer_addr) = req.peer_addr().map(|socket| socket.to_string()) {
+            if Some(peer_addr.as_str()) != remote_addr {
+                // Client is going through a proxy
+                attributes.push(NET_PEER_IP.string(peer_addr))
+            }
         }
         builder.attributes = Some(attributes);
         let span = tracer.build(builder);
         let cx = Context::current_with_span(span);
+        drop(conn_info);
 
         let fut = self
             .service
@@ -226,13 +220,8 @@ where
             .map(move |res| match res {
                 Ok(ok_res) => {
                     let span = cx.span();
-                    span.set_attribute(KeyValue::new(
-                        HTTP_STATUS_CODE_ATTRIBUTE,
-                        Value::U64(ok_res.status().as_u16() as u64),
-                    ));
-                    if let Some(reason) = ok_res.status().canonical_reason() {
-                        span.set_attribute(KeyValue::new(HTTP_STATUS_TEXT_ATTRIBUTE, reason));
-                    }
+                    span.set_attribute(HTTP_STATUS_CODE.u64(ok_res.status().as_u16() as u64));
+                    #[allow(clippy::match_overlapping_arm)]
                     let status_code = match ok_res.status().as_u16() {
                         100..=399 => StatusCode::OK,
                         401 => StatusCode::Unauthenticated,
@@ -246,7 +235,7 @@ where
                         500..=599 => StatusCode::Internal,
                         _ => StatusCode::Unknown,
                     };
-                    span.set_status(status_code, "".to_string());
+                    span.set_status(status_code, String::new());
                     span.end();
                     Ok(ok_res)
                 }
@@ -272,8 +261,12 @@ impl<'a> RequestHeaderCarrier<'a> {
     }
 }
 
-impl<'a> opentelemetry::api::Extractor for RequestHeaderCarrier<'a> {
+impl<'a> Extractor for RequestHeaderCarrier<'a> {
     fn get(&self, key: &str) -> Option<&str> {
         self.headers.get(key).and_then(|v| v.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.headers.keys().map(|header| header.as_str()).collect()
     }
 }
