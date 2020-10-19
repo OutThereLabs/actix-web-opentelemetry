@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.7.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.6.0...v0.7.0)
+
+### Changed
+
+- Remove default features from actix-web #30
+- Update to OpenTelemetry v0.9.x #30
+- Move metrics behind a feature flag #30
+- Change default route name from unmatched to default #30
+
+### Removed
+
+- Remove deprecated `with_tracing` function. #30
+
 ## [v0.6.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.5.0...v0.6.0)
 
 ### Changed
