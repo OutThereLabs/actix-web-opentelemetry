@@ -25,4 +25,4 @@ prometheus = { version = "0.10", default-features = false, optional = true }
 serde = "1.0"
 
 [dev-dependencies]
-opentelemetry-jaeger = { version = "0.8", features = ["tokio"] }
+opentelemetry-jaeger = { version = "0.9", features = ["tokio"] }
