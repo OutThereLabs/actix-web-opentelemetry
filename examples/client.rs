@@ -1,5 +1,6 @@
 use actix_web::client;
 use actix_web_opentelemetry::ClientExt;
+use opentelemetry::{global, sdk::propagation::TraceContextPropagator};
 use std::error::Error;
 use std::io;
 
@@ -22,7 +23,8 @@ async fn execute_request(client: client::Client) -> io::Result<String> {
 }
 
 #[actix_web::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    global::set_text_map_propagator(TraceContextPropagator::new());
     let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
         .with_service_name("actix_client")
         .install()?;

@@ -5,13 +5,13 @@ use futures::{
     future::{self, FutureExt},
     Future,
 };
-use opentelemetry::api::{
+use opentelemetry::{
+    global,
     metrics::{
         noop::NoopMeterProvider, Counter, Meter, MeterProvider, MetricsError, ValueRecorder,
     },
     Key,
 };
-use opentelemetry::global;
 use opentelemetry_prometheus::PrometheusExporter;
 use prometheus::{Encoder, TextEncoder};
 use std::pin::Pin;
@@ -79,7 +79,7 @@ where
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
     fn default() -> Self {
-        let provider = NoopMeterProvider;
+        let provider = NoopMeterProvider::new();
         let meter = provider.meter("noop");
         RequestMetrics::new(meter, None, None)
     }
@@ -93,7 +93,7 @@ impl<F> RequestMetrics<F>
 where
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
 {
-    /// Create new `RequestMetrics`
+    /// Create a new [`RequestMetrics`]
     pub fn new(
         meter: Meter,
         should_render_metrics: Option<F>,
@@ -229,7 +229,7 @@ where
                     let labels = vec![
                         ROUTE_KEY.string(route),
                         METHOD_KEY.string(method),
-                        STATUS_KEY.u64(res.status().as_u16() as u64),
+                        STATUS_KEY.i64(res.status().as_u16() as i64),
                     ];
                     request_metrics.http_requests_total.add(1, &labels);
                     request_metrics.http_requests_duration_seconds.record(

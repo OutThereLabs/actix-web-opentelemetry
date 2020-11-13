@@ -1,20 +1,22 @@
 use super::route_formatter::RouteFormatter;
+use crate::util::{http_flavor, http_method_str, http_scheme};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::{http::header, Error};
 use futures::{
     future::{ok, FutureExt, Ready},
     Future,
 };
-use opentelemetry::api::{
+use opentelemetry::{
+    global,
     propagation::Extractor,
     trace::{FutureExt as OtelFutureExt, SpanKind, StatusCode, TraceContextExt, Tracer},
     Context,
 };
-use opentelemetry::global;
 use opentelemetry_semantic_conventions::trace::{
     HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_SERVER_NAME,
     HTTP_STATUS_CODE, HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
 };
+use std::borrow::Cow;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
@@ -114,6 +116,7 @@ where
 
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
+            global::tracer_with_version("actix-web-opentelemetry", env!("CARGO_PKG_VERSION")),
             service,
             self.route_formatter.clone(),
         ))
@@ -122,6 +125,7 @@ where
 
 #[derive(Debug)]
 pub struct RequestTracingMiddleware<S> {
+    tracer: global::BoxedTracer,
     service: S,
     route_formatter: Option<Rc<dyn RouteFormatter>>,
 }
@@ -132,8 +136,13 @@ where
     S::Future: 'static,
     B: 'static,
 {
-    fn new(service: S, route_formatter: Option<Rc<dyn RouteFormatter>>) -> Self {
+    fn new(
+        tracer: global::BoxedTracer,
+        service: S,
+        route_formatter: Option<Rc<dyn RouteFormatter>>,
+    ) -> Self {
         RequestTracingMiddleware {
+            tracer,
             service,
             route_formatter,
         }
@@ -161,24 +170,26 @@ where
             propagator.extract(&RequestHeaderCarrier::new(req.headers_mut()))
         })
         .attach();
-        let tracer = global::tracer("actix-web-opentelemetry");
-        let mut http_route = req.match_pattern().unwrap_or_else(|| "default".to_string());
+        let mut http_route: Cow<'static, str> = req
+            .match_pattern()
+            .map(Into::into)
+            .unwrap_or_else(|| "default".into());
         if let Some(formatter) = &self.route_formatter {
-            http_route = formatter.format(&http_route);
+            http_route = formatter.format(&http_route).into();
         }
         let conn_info = req.connection_info();
-        let mut builder = tracer.span_builder(&http_route);
+        let mut builder = self.tracer.span_builder(&http_route);
         builder.span_kind = Some(SpanKind::Server);
-        let mut attributes = vec![
-            HTTP_METHOD.string(req.method().as_str()),
-            HTTP_FLAVOR.string(format!("{:?}", req.version()).replace("HTTP/", "")),
-            HTTP_HOST.string(conn_info.host()),
-            HTTP_ROUTE.string(http_route),
-            HTTP_SCHEME.string(conn_info.scheme()),
-        ];
+        let mut attributes = Vec::with_capacity(11);
+        attributes.push(HTTP_METHOD.string(http_method_str(req.method())));
+        attributes.push(HTTP_FLAVOR.string(http_flavor(req.version())));
+        attributes.push(HTTP_HOST.string(conn_info.host().to_string()));
+        attributes.push(HTTP_ROUTE.string(http_route));
+        attributes.push(HTTP_SCHEME.string(http_scheme(conn_info.scheme())));
+
         let server_name = req.app_config().host();
         if server_name != conn_info.host() {
-            attributes.push(HTTP_SERVER_NAME.string(server_name));
+            attributes.push(HTTP_SERVER_NAME.string(server_name.to_string()));
         }
         if let Some(port) = conn_info
             .host()
@@ -186,21 +197,21 @@ where
             .nth(1)
             .and_then(|port| port.parse().ok())
         {
-            attributes.push(NET_HOST_PORT.u64(port))
+            attributes.push(NET_HOST_PORT.i64(port))
         }
         if let Some(path) = req.uri().path_and_query() {
-            attributes.push(HTTP_TARGET.string(path.as_str()))
+            attributes.push(HTTP_TARGET.string(path.as_str().to_string()))
         }
         if let Some(user_agent) = req
             .headers()
             .get(header::USER_AGENT)
             .and_then(|s| s.to_str().ok())
         {
-            attributes.push(HTTP_USER_AGENT.string(user_agent))
+            attributes.push(HTTP_USER_AGENT.string(user_agent.to_string()))
         }
         let remote_addr = conn_info.realip_remote_addr();
         if let Some(remote) = remote_addr {
-            attributes.push(HTTP_CLIENT_IP.string(remote))
+            attributes.push(HTTP_CLIENT_IP.string(remote.to_string()))
         }
         if let Some(peer_addr) = req.peer_addr().map(|socket| socket.to_string()) {
             if Some(peer_addr.as_str()) != remote_addr {
@@ -209,7 +220,7 @@ where
             }
         }
         builder.attributes = Some(attributes);
-        let span = tracer.build(builder);
+        let span = self.tracer.build(builder);
         let cx = Context::current_with_span(span);
         drop(conn_info);
 
@@ -220,20 +231,11 @@ where
             .map(move |res| match res {
                 Ok(ok_res) => {
                     let span = cx.span();
-                    span.set_attribute(HTTP_STATUS_CODE.u64(ok_res.status().as_u16() as u64));
-                    #[allow(clippy::match_overlapping_arm)]
-                    let status_code = match ok_res.status().as_u16() {
-                        100..=399 => StatusCode::OK,
-                        401 => StatusCode::Unauthenticated,
-                        403 => StatusCode::PermissionDenied,
-                        404 => StatusCode::NotFound,
-                        429 => StatusCode::ResourceExhausted,
-                        400..=499 => StatusCode::InvalidArgument,
-                        501 => StatusCode::Unimplemented,
-                        503 => StatusCode::Unavailable,
-                        504 => StatusCode::DeadlineExceeded,
-                        500..=599 => StatusCode::Internal,
-                        _ => StatusCode::Unknown,
+                    span.set_attribute(HTTP_STATUS_CODE.i64(ok_res.status().as_u16() as i64));
+                    let status_code = if ok_res.status().is_server_error() {
+                        StatusCode::Error
+                    } else {
+                        StatusCode::Ok
                     };
                     span.set_status(status_code, String::new());
                     span.end();
@@ -241,7 +243,7 @@ where
                 }
                 Err(err) => {
                     let span = cx.span();
-                    span.set_status(StatusCode::Internal, format!("{:?}", err));
+                    span.set_status(StatusCode::Error, format!("{:?}", err));
                     span.end();
                     Err(err)
                 }

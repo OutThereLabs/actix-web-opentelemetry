@@ -1,3 +1,4 @@
+use crate::util::http_method_str;
 use actix_http::{encoding::Decoder, Error, Payload, PayloadStream};
 use actix_web::{
     body::Body,
@@ -6,12 +7,12 @@ use actix_web::{
     web::Bytes,
 };
 use futures::{future::TryFutureExt, Future, Stream};
-use opentelemetry::api::{
+use opentelemetry::{
+    global,
     propagation::Injector,
     trace::{SpanKind, StatusCode, TraceContextExt, Tracer},
     Context,
 };
-use opentelemetry::global;
 use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
 };
@@ -21,7 +22,7 @@ use std::str::FromStr;
 
 /// A wrapper for the actix-web [`ClientRequest`].
 ///
-/// [`ClientRequest`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.ClientRequest.html
+/// [`ClientRequest`]: actix_web::client::ClientRequest
 #[derive(Debug)]
 pub struct InstrumentedClientRequest {
     cx: Context,
@@ -30,7 +31,7 @@ pub struct InstrumentedClientRequest {
 
 /// OpenTelemetry extensions for actix-web's [`Client`].
 ///
-/// [`Client`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.Client.html
+/// [`Client`]: actix_web::client::Client
 pub trait ClientExt {
     /// Trace an `actix_web::client::Client` request using the current context.
     ///
@@ -57,13 +58,14 @@ pub trait ClientExt {
         self.trace_request_with_context(Context::current())
     }
 
-    /// Trace an `actix_web::client::Client` request using the given span context.
+    /// Trace an [`actix_web::client::Client`] request using the given span context.
     ///
+    ///[`actix_web::client::Client`]: actix_web::client::Client
     /// Example:
     /// ```no_run
     /// use actix_web::client;
     /// use actix_web_opentelemetry::ClientExt;
-    /// use opentelemetry::api::Context;
+    /// use opentelemetry::Context;
     ///
     /// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
@@ -89,16 +91,16 @@ impl ClientExt for ClientRequest {
 type AwcResult = Result<ClientResponse<Decoder<Payload<PayloadStream>>>, SendRequestError>;
 
 impl InstrumentedClientRequest {
-    /// Generate an awc `ClientResponse` from a traced request with an empty body.
+    /// Generate an awc [`ClientResponse`] from a traced request with an empty body.
     ///
-    /// [`ClientResponse`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.ClientResponse.html
+    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send(self) -> AwcResult {
         self.trace_request(|request| request.send()).await
     }
 
-    /// Generate an awc `ClientResponse` from a traced request with the given body.
+    /// Generate an awc [`ClientResponse`] from a traced request with the given body.
     ///
-    /// [`ClientResponse`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.ClientResponse.html
+    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_body<B>(self, body: B) -> AwcResult
     where
         B: Into<Body>,
@@ -106,26 +108,26 @@ impl InstrumentedClientRequest {
         self.trace_request(|request| request.send_body(body)).await
     }
 
-    /// Generate an awc `ClientResponse` from a traced request with the given form
+    /// Generate an awc [`ClientResponse`] from a traced request with the given form
     /// body.
     ///
-    /// [`ClientResponse`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.ClientResponse.html
+    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_form<T: Serialize>(self, value: &T) -> AwcResult {
         self.trace_request(|request| request.send_form(value)).await
     }
 
-    /// Generate an awc `ClientResponse` from a traced request with the given JSON
+    /// Generate an awc [`ClientResponse`] from a traced request with the given JSON
     /// body.
     ///
-    /// [`ClientResponse`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.ClientResponse.html
+    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_json<T: Serialize>(self, value: &T) -> AwcResult {
         self.trace_request(|request| request.send_json(value)).await
     }
 
-    /// Generate an awc `ClientResponse` from a traced request with the given stream
+    /// Generate an awc [`ClientResponse`] from a traced request with the given stream
     /// body.
     ///
-    /// [`ClientResponse`]: https://docs.rs/actix-web/2.0.0/actix_web/client/struct.ClientResponse.html
+    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_stream<S, E>(self, stream: S) -> AwcResult
     where
         S: Stream<Item = Result<Bytes, E>> + Unpin + 'static,
@@ -142,7 +144,7 @@ impl InstrumentedClientRequest {
     {
         let tracer = global::tracer("actix-client");
         let mut attributes = vec![
-            HTTP_METHOD.string(self.request.get_method().as_str()),
+            HTTP_METHOD.string(http_method_str(self.request.get_method())),
             HTTP_URL.string(self.request.get_uri().to_string()),
             HTTP_FLAVOR.string(format!("{:?}", self.request.get_version()).replace("HTTP/", "")),
         ];
@@ -188,13 +190,13 @@ impl InstrumentedClientRequest {
 
 fn record_response<T>(response: &ClientResponse<T>, cx: &Context) {
     let span = cx.span();
-    span.set_attribute(HTTP_STATUS_CODE.u64(response.status().as_u16() as u64));
+    span.set_attribute(HTTP_STATUS_CODE.i64(response.status().as_u16() as i64));
     span.end();
 }
 
 fn record_err<T: fmt::Debug>(err: T, cx: &Context) {
     let span = cx.span();
-    span.set_status(StatusCode::Internal, format!("{:?}", err));
+    span.set_status(StatusCode::Error, format!("{:?}", err));
     span.end();
 }
 

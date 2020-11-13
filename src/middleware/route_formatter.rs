@@ -8,7 +8,7 @@
 /// path `/users/123/profile` the route for this span would be
 /// `/users/{id}/profile`.
 ///
-/// [match pattern]: https://docs.rs/actix-web/3/actix_web/struct.HttpRequest.html#method.match_pattern
+/// [match pattern]: actix_web::HttpRequest::match_pattern
 ///
 /// # Custom Formatter Examples
 ///
