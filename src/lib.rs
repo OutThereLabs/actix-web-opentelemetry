@@ -1,5 +1,3 @@
-//! # Actix Web OpenTelemetry
-//!
 //! [OpenTelemetry] integration for [Actix Web].
 //!
 //! This crate allows you to easily instrument client and server requests.
@@ -13,10 +11,7 @@
 //!
 //! [OpenTelemetry]: https://opentelemetry.io
 //! [Actix Web]: https://actix.rs
-//! [`ClientExt::trace_request`]: trait.ClientExt.html#method.trace_request
-//! [`RequestTracing`]: struct.RequestTracing.html
 //! [Prometheus]: https://prometheus.io
-//! [`RequestMetrics`]: struct.RequestMetrics.html
 //!
 //! ### Client Request Examples:
 //!
@@ -70,7 +65,7 @@
 //! }
 //! ```
 //!
-//! Request metrics middleware:
+//! Request metrics middleware (requires the `metrics` feature):
 //!
 //! ```no_run
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
@@ -122,11 +117,14 @@
 //! [`tokio`]: https://crates.io/crates/tokio
 #![deny(missing_docs, unreachable_pub, missing_debug_implementations)]
 #![cfg_attr(test, deny(warnings))]
+#![cfg_attr(docsrs, feature(doc_cfg), deny(broken_intra_doc_links))]
 
 mod client;
 mod middleware;
+pub(crate) mod util;
 
 #[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub use middleware::metrics::{RequestMetrics, RequestMetricsMiddleware};
 pub use {
     client::{ClientExt, InstrumentedClientRequest},
