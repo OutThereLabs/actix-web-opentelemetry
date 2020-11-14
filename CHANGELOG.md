@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.8.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.7.0...v0.8.0)
+
+Be sure to set a trace propagator via [`global::set_text_map_propagator`](https://docs.rs/opentelemetry/0.10.0/opentelemetry/global/fn.set_text_map_propagator.html)
+as the default is now a no-op.
+
+### Changed
+
+- Update to OpenTelemetry v0.10.x #38
+
 ## [v0.7.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.6.0...v0.7.0)
 
 ### Changed
