@@ -80,7 +80,7 @@ where
 {
     fn default() -> Self {
         let provider = NoopMeterProvider::new();
-        let meter = provider.meter("noop");
+        let meter = provider.meter("noop", None);
         RequestMetrics::new(meter, None, None)
     }
 }
