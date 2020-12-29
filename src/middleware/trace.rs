@@ -38,7 +38,7 @@ use std::task::Poll;
 ///     // Install an OpenTelemetry trace pipeline.
 ///     // Swap for https://docs.rs/opentelemetry-jaeger or other compatible
 ///     // exporter to send trace information to your collector.
-///     opentelemetry::exporter::trace::stdout::new_pipeline().install();
+///     opentelemetry::sdk::export::trace::stdout::new_pipeline().install();
 ///
 ///     HttpServer::new(|| {
 ///         App::new()
@@ -166,10 +166,9 @@ where
     }
 
     fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
-        let _parent_context = global::get_text_map_propagator(|propagator| {
+        let parent_context = global::get_text_map_propagator(|propagator| {
             propagator.extract(&RequestHeaderCarrier::new(req.headers_mut()))
-        })
-        .attach();
+        });
         let mut http_route: Cow<'static, str> = req
             .match_pattern()
             .map(Into::into)
@@ -179,6 +178,7 @@ where
         }
         let conn_info = req.connection_info();
         let mut builder = self.tracer.span_builder(&http_route);
+        builder.parent_context = Some(parent_context);
         builder.span_kind = Some(SpanKind::Server);
         let mut attributes = Vec::with_capacity(11);
         attributes.push(HTTP_METHOD.string(http_method_str(req.method())));
