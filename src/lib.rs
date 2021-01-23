@@ -96,25 +96,6 @@
 //! # #[cfg(not(feature = "metrics"))]
 //! # fn main() {}
 //! ```
-//!
-//! ### Exporter configuration
-//!
-//! [`actix-web`] uses [`tokio`] as the underlying executor, so exporters should be
-//! configured to be non-blocking:
-//!
-//! ```toml
-//! [dependencies]
-//! # if exporting to jaeger, use the `tokio` feature.
-//! opentelemetry-jaeger = { version = "*", features = ["tokio"] }
-//!
-//! # if exporting to zipkin, use the `tokio` based `reqwest-client` feature.
-//! opentelemetry-zipkin = { version = "*", features = ["reqwest-client"], default-features = false }
-//!
-//! # ... ensure the same same for any other exporters
-//! ```
-//!
-//! [`actix-web`]: https://crates.io/crates/actix-web
-//! [`tokio`]: https://crates.io/crates/tokio
 #![deny(missing_docs, unreachable_pub, missing_debug_implementations)]
 #![cfg_attr(test, deny(warnings))]
 #![cfg_attr(docsrs, feature(doc_cfg), deny(broken_intra_doc_links))]
