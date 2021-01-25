@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.10.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.9.0...v0.10.0)
+
+### Changed
+
+Note: optentelemetry `v0.12.x` uses tokio 1.0. See the
+[updated examples](https://github.com/OutThereLabs/actix-web-opentelemetry/blob/e29c77312d6a906571286f78cc26ca72cf3a0b6f/examples/server.rs#L17-L40)
+for compatible setup until actix-web supports tokio 1.0.
+
+- Update to OpenTelemetry v0.12.x #48
+
 ## [v0.9.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.8.0...v0.9.0)
 
 ### Changed
