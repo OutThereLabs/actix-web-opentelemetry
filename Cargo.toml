@@ -26,7 +26,7 @@ serde = "1.0"
 
 [dev-dependencies]
 opentelemetry-jaeger = { version = "0.11" }
-tokio = { version = "0.2", default-features = false, features = ["rt-core", "blocking", "time", "stream"] }
+tokio = { version = "1.1", default-features = false, features = ["rt-core", "blocking", "time", "stream"] }
 
 [package.metadata.docs.rs]
 all-features = true
