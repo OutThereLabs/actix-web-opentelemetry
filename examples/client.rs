@@ -3,10 +3,10 @@ use actix_web_opentelemetry::ClientExt;
 use opentelemetry::{
     global,
     sdk::{
-        export::trace::SpanExporter,
         propagation::TraceContextPropagator,
         trace::{BatchSpanProcessor, TracerProvider},
     },
+    util,
 };
 use std::error::Error;
 use std::io;
@@ -29,18 +29,6 @@ async fn execute_request(client: client::Client) -> io::Result<String> {
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
 }
 
-// Compatibility with older tokio v0.2.x used by actix web v3. Not necessary with actic web v4.
-fn tokio_exporter_compat<T: SpanExporter + 'static>(exporter: T) -> BatchSpanProcessor {
-    let spawn = |fut| tokio::task::spawn_blocking(|| futures::executor::block_on(fut));
-    BatchSpanProcessor::builder(
-        exporter,
-        spawn,
-        tokio::time::sleep,
-        tokio::time::interval,
-    )
-    .build()
-}
-
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     global::set_text_map_propagator(TraceContextPropagator::new());
@@ -48,8 +36,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_service_name("actix_client")
         .init_exporter()
         .expect("pipeline exporter error");
+    let batch_exporter = BatchSpanProcessor::builder(
+        exporter,
+        tokio::spawn,
+        tokio::time::sleep,
+        util::tokio_interval_stream,
+    )
+    .build();
     let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(tokio_exporter_compat(exporter))
+        .with_batch_exporter(batch_exporter)
         .build();
     let _uninstall = global::set_tracer_provider(tracer_provider);
 
