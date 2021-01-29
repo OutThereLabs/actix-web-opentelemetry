@@ -20,7 +20,7 @@ fn tokio_exporter_compat<T: SpanExporter + 'static>(exporter: T) -> BatchSpanPro
     BatchSpanProcessor::builder(
         exporter,
         spawn,
-        tokio::time::delay_for,
+        tokio::time::sleep,
         tokio::time::interval,
     )
     .build()

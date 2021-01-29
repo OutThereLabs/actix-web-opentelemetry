@@ -101,13 +101,12 @@ impl RequestTracing {
     }
 }
 
-impl<S, B> Transform<S> for RequestTracing
+impl<S, B> Transform<S, ServiceRequest> for RequestTracing
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
-    type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
     type Transform = RequestTracingMiddleware<S>;
@@ -132,7 +131,7 @@ pub struct RequestTracingMiddleware<S> {
 
 impl<S, B> RequestTracingMiddleware<S>
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
@@ -149,13 +148,12 @@ where
     }
 }
 
-impl<S, B> Service for RequestTracingMiddleware<S>
+impl<S, B> Service<ServiceRequest> for RequestTracingMiddleware<S>
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
-    type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
     #[allow(clippy::type_complexity)]
