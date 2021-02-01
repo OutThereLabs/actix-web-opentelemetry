@@ -1,13 +1,5 @@
 use actix_web::client;
 use actix_web_opentelemetry::ClientExt;
-use opentelemetry::{
-    global,
-    sdk::{
-        propagation::TraceContextPropagator,
-        trace::{BatchSpanProcessor, TracerProvider},
-    },
-    util,
-};
 use std::error::Error;
 use std::io;
 
@@ -31,22 +23,10 @@ async fn execute_request(client: client::Client) -> io::Result<String> {
 
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    global::set_text_map_propagator(TraceContextPropagator::new());
-    let exporter = opentelemetry_jaeger::new_pipeline()
+    let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
         .with_service_name("actix_client")
-        .init_exporter()
-        .expect("pipeline exporter error");
-    let batch_exporter = BatchSpanProcessor::builder(
-        exporter,
-        tokio::spawn,
-        tokio::time::sleep,
-        util::tokio_interval_stream,
-    )
-    .build();
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(batch_exporter)
-        .build();
-    let _uninstall = global::set_tracer_provider(tracer_provider);
+        .install()
+        .expect("pipeline install error");
 
     let client = client::Client::new();
     let response = execute_request(client).await?;

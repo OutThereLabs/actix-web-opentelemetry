@@ -27,7 +27,6 @@ serde = "1.0"
 [dev-dependencies]
 opentelemetry-jaeger = { version = "0.11" }
 opentelemetry = { version = "0.12", default-features = false, features = ["trace", "metrics", "tokio-support"] }
-tokio = { version = "1", default-features = false, features = ["time"] }
 
 [package.metadata.docs.rs]
 all-features = true

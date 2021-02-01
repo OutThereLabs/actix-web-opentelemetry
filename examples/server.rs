@@ -1,13 +1,5 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::RequestTracing;
-use opentelemetry::{
-    global,
-    sdk::{
-        propagation::TraceContextPropagator,
-        trace::{BatchSpanProcessor, TracerProvider},
-    },
-    util,
-};
 use std::io;
 
 async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
@@ -16,23 +8,10 @@ async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'stat
 
 #[actix_web::main]
 async fn main() -> io::Result<()> {
-    // Start a new jaeger trace pipeline
-    global::set_text_map_propagator(TraceContextPropagator::new());
-    let exporter = opentelemetry_jaeger::new_pipeline()
+    let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
         .with_service_name("actix_server")
-        .init_exporter()
+        .install()
         .expect("pipeline install error");
-    let batch_exporter = BatchSpanProcessor::builder(
-        exporter,
-        tokio::spawn,
-        tokio::time::sleep,
-        util::tokio_interval_stream,
-    )
-    .build();
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(batch_exporter)
-        .build();
-    let _uninstall = global::set_tracer_provider(tracer_provider);
 
     // Start a new prometheus metrics pipeline if --features metrics is used
     #[cfg(feature = "metrics")]
