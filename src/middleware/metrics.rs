@@ -193,11 +193,11 @@ where
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
     }
 
-    fn call(&mut self, req: dev::ServiceRequest) -> Self::Future {
+    fn call(&self, req: dev::ServiceRequest) -> Self::Future {
         if self
             .inner
             .should_render_metrics
