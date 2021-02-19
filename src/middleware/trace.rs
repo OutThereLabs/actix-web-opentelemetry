@@ -159,11 +159,11 @@ where
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
     }
 
-    fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
+    fn call(&self, mut req: ServiceRequest) -> Self::Future {
         let parent_context = global::get_text_map_propagator(|propagator| {
             propagator.extract(&RequestHeaderCarrier::new(req.headers_mut()))
         });
