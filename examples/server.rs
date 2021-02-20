@@ -1,5 +1,6 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::RequestTracing;
+use opentelemetry::{global, sdk::propagation::TraceContextPropagator};
 use std::io;
 
 async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
@@ -8,6 +9,8 @@ async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'stat
 
 #[actix_web::main]
 async fn main() -> io::Result<()> {
+    // Start a new jaeger trace pipeline
+    global::set_text_map_propagator(TraceContextPropagator::new());
     let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
         .with_service_name("actix_server")
         .install()
