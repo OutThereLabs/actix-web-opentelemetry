@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.11.0-beta.1](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.10.0...v0.11.0-beta.1)
+
+### Changed
+
+- Update to tokio `1.0` and actix-web `4.0.0-beta.3` (#51)
+
 ## [v0.10.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.9.0...v0.10.0)
 
 ### Changed
