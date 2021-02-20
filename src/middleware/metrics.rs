@@ -142,10 +142,10 @@ where
     }
 }
 
-impl<S, B, F> dev::Transform<S> for RequestMetrics<F>
+impl<S, B, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
 where
     S: dev::Service<
-        Request = dev::ServiceRequest,
+        dev::ServiceRequest,
         Response = dev::ServiceResponse<B>,
         Error = actix_web::Error,
     >,
@@ -153,7 +153,6 @@ where
     B: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
-    type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
     type Transform = RequestMetricsMiddleware<S, F>;
@@ -178,10 +177,10 @@ where
     inner: Arc<RequestMetrics<F>>,
 }
 
-impl<S, B, F> dev::Service for RequestMetricsMiddleware<S, F>
+impl<S, B, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
 where
     S: dev::Service<
-        Request = dev::ServiceRequest,
+        dev::ServiceRequest,
         Response = dev::ServiceResponse<B>,
         Error = actix_web::Error,
     >,
@@ -189,17 +188,16 @@ where
     B: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
-    type Request = dev::ServiceRequest;
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
     }
 
-    fn call(&mut self, req: dev::ServiceRequest) -> Self::Future {
+    fn call(&self, req: dev::ServiceRequest) -> Self::Future {
         if self
             .inner
             .should_render_metrics

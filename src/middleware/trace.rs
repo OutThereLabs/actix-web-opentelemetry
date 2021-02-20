@@ -101,13 +101,12 @@ impl RequestTracing {
     }
 }
 
-impl<S, B> Transform<S> for RequestTracing
+impl<S, B> Transform<S, ServiceRequest> for RequestTracing
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
-    type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
     type Transform = RequestTracingMiddleware<S>;
@@ -132,7 +131,7 @@ pub struct RequestTracingMiddleware<S> {
 
 impl<S, B> RequestTracingMiddleware<S>
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
@@ -149,23 +148,22 @@ where
     }
 }
 
-impl<S, B> Service for RequestTracingMiddleware<S>
+impl<S, B> Service<ServiceRequest> for RequestTracingMiddleware<S>
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
     B: 'static,
 {
-    type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = Error;
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
     }
 
-    fn call(&mut self, mut req: ServiceRequest) -> Self::Future {
+    fn call(&self, mut req: ServiceRequest) -> Self::Future {
         let parent_context = global::get_text_map_propagator(|propagator| {
             propagator.extract(&RequestHeaderCarrier::new(req.headers_mut()))
         });
