@@ -174,6 +174,7 @@ impl InstrumentedClientRequest {
             )
             .with_kind(SpanKind::Client)
             .with_attributes(attributes)
+            .with_parent_context(self.cx.clone())
             .start(&tracer);
         let cx = self.cx.with_span(span);
 
