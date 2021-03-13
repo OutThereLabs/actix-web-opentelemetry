@@ -16,11 +16,11 @@
 //! ### Client Request Examples:
 //!
 //! ```no_run
-//! use actix_web::client;
+//! use awc::{Client, error::SendRequestError};
 //! use actix_web_opentelemetry::ClientExt;
 //! use futures::Future;
 //!
-//! async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
+//! async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
 //!     let res = client
 //!         .get("http://localhost:8080")
 //!         // Add `trace_request` before `send` to any awc request to add instrumentation

@@ -2,10 +2,10 @@ use crate::util::http_method_str;
 use actix_http::{encoding::Decoder, Error, Payload, PayloadStream};
 use actix_web::{
     body::Body,
-    client::{ClientRequest, ClientResponse, SendRequestError},
     http::{HeaderName, HeaderValue},
     web::Bytes,
 };
+use awc::{error::SendRequestError, ClientRequest, ClientResponse};
 use futures::{future::TryFutureExt, Future, Stream};
 use opentelemetry::{
     global,
@@ -37,10 +37,10 @@ pub trait ClientExt {
     ///
     /// Example:
     /// ```no_run
-    /// use actix_web::client;
     /// use actix_web_opentelemetry::ClientExt;
+    /// use awc::{Client, error::SendRequestError};
     ///
-    /// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
+    /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
     ///         // Add `trace_request` before `send` to any awc request to add instrumentation
     ///         .trace_request()
@@ -63,11 +63,11 @@ pub trait ClientExt {
     ///[`actix_web::client::Client`]: actix_web::client::Client
     /// Example:
     /// ```no_run
-    /// use actix_web::client;
     /// use actix_web_opentelemetry::ClientExt;
+    /// use awc::{Client, error::SendRequestError};
     /// use opentelemetry::Context;
     ///
-    /// async fn execute_request(client: &client::Client) -> Result<(), client::SendRequestError> {
+    /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
     ///         // Add `trace_request_with_context` before `send` to any awc request to
     ///         // add instrumentation
