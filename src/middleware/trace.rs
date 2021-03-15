@@ -3,7 +3,7 @@ use crate::util::{http_flavor, http_method_str, http_scheme};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::{http::header, Error};
 use futures::{
-    future::{ok, FutureExt, Ready},
+    future::{ok, Ready},
     Future,
 };
 use opentelemetry::{
@@ -16,7 +16,7 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_SERVER_NAME,
     HTTP_STATUS_CODE, HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, cell::RefCell};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Poll;
@@ -103,7 +103,7 @@ impl RequestTracing {
 
 impl<S, B> Transform<S> for RequestTracing
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
     B: 'static,
 {
@@ -117,7 +117,7 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
             global::tracer_with_version("actix-web-opentelemetry", env!("CARGO_PKG_VERSION")),
-            service,
+            Rc::new(RefCell::new(service)),
             self.route_formatter.clone(),
         ))
     }
@@ -126,7 +126,7 @@ where
 #[derive(Debug)]
 pub struct RequestTracingMiddleware<S> {
     tracer: global::BoxedTracer,
-    service: S,
+    service: Rc<RefCell<S>>,
     route_formatter: Option<Rc<dyn RouteFormatter>>,
 }
 
@@ -138,7 +138,7 @@ where
 {
     fn new(
         tracer: global::BoxedTracer,
-        service: S,
+        service: Rc<RefCell<S>>,
         route_formatter: Option<Rc<dyn RouteFormatter>>,
     ) -> Self {
         RequestTracingMiddleware {
@@ -151,7 +151,7 @@ where
 
 impl<S, B> Service for RequestTracingMiddleware<S>
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
     B: 'static,
 {
@@ -222,16 +222,14 @@ where
         builder.attributes = Some(attributes);
         let span = self.tracer.build(builder);
         let cx = Context::current_with_span(span);
+        let cx2 = cx.clone();
         drop(conn_info);
-        // attach synchronously for the sync part of service calls
-        // with_context below attaches for the async part.
-        let _attachment = cx.clone().attach();
+        let srv = self.service.clone();
 
-        let fut = self
-            .service
-            .call(req)
-            .with_context(cx.clone())
-            .map(move |res| match res {
+        Box::pin(async move {
+            let res = srv.borrow_mut()
+                .call(req).await;
+            match res {
                 Ok(ok_res) => {
                     let span = cx.span();
                     span.set_attribute(HTTP_STATUS_CODE.i64(ok_res.status().as_u16() as i64));
@@ -250,9 +248,8 @@ where
                     span.end();
                     Err(err)
                 }
-            });
-
-        Box::pin(async move { fut.await })
+            }
+        }.with_context(cx2))
     }
 }
 
