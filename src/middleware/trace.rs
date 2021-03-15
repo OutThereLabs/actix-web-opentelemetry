@@ -223,6 +223,9 @@ where
         let span = self.tracer.build(builder);
         let cx = Context::current_with_span(span);
         drop(conn_info);
+        // attach synchronously for the sync part of service calls
+        // with_context below attaches for the async part.
+        let _attachment = cx.clone().attach();
 
         let fut = self
             .service
