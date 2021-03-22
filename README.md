@@ -42,3 +42,8 @@ $ firefox http://localhost:16686/
 ```
 
 ![Jaeger UI](trace.png)
+
+### Features
+
+- `metrics` -- enable support for opentelemetry metrics (only traces are enabled by default)
+- `sync-middleware` -- enable tracing on actix-web middlewares that do synchronous work before returning a future. Adds a small amount of overhead to every request.

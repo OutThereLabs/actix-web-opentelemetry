@@ -13,6 +13,7 @@ edition = "2018"
 
 [features]
 metrics = ["opentelemetry/metrics", "opentelemetry-prometheus", "prometheus"]
+sync-middleware = []
 
 [dependencies]
 actix-http = { version = "3.0.0-beta.4", default-features = false, features = ["compress"] }

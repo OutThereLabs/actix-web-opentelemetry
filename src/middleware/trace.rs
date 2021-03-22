@@ -220,6 +220,8 @@ where
         builder.attributes = Some(attributes);
         let span = self.tracer.build(builder);
         let cx = Context::current_with_span(span);
+        #[cfg(feature="sync-middleware")]
+        let attachment = cx.clone().attach();
         drop(conn_info);
 
         let fut = self
@@ -247,6 +249,8 @@ where
                 }
             });
 
+        #[cfg(feature="sync-middleware")]
+        drop(attachment);
         Box::pin(async move { fut.await })
     }
 }
