@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.11.0-beta.3](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.2..v0.11.0-beta.3)
+
+### Changed
+
+- Update to opentelemetry v0.13.x #64
+
 ## [v0.11.0-beta.2](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.1..v0.11.0-beta.2)
 
 ### Changed
