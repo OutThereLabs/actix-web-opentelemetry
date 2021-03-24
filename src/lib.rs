@@ -52,7 +52,7 @@
 //!     // Install an OpenTelemetry trace pipeline.
 //!     // Swap for https://docs.rs/opentelemetry-jaeger or other compatible
 //!     // exporter to send trace information to your collector.
-//!     opentelemetry::sdk::export::trace::stdout::new_pipeline().install();
+//!     opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
 //!
 //!     HttpServer::new(|| {
 //!         App::new()
