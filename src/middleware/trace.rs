@@ -38,7 +38,7 @@ use std::task::Poll;
 ///     // Install an OpenTelemetry trace pipeline.
 ///     // Swap for https://docs.rs/opentelemetry-jaeger or other compatible
 ///     // exporter to send trace information to your collector.
-///     opentelemetry::sdk::export::trace::stdout::new_pipeline().install();
+///     opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
 ///
 ///     HttpServer::new(|| {
 ///         App::new()
@@ -220,7 +220,7 @@ where
         builder.attributes = Some(attributes);
         let span = self.tracer.build(builder);
         let cx = Context::current_with_span(span);
-        #[cfg(feature="sync-middleware")]
+        #[cfg(feature = "sync-middleware")]
         let attachment = cx.clone().attach();
         drop(conn_info);
 
@@ -232,12 +232,16 @@ where
                 Ok(ok_res) => {
                     let span = cx.span();
                     span.set_attribute(HTTP_STATUS_CODE.i64(ok_res.status().as_u16() as i64));
-                    let status_code = if ok_res.status().is_server_error() {
-                        StatusCode::Error
-                    } else {
-                        StatusCode::Ok
+                    if ok_res.status().is_server_error() {
+                        span.set_status(
+                            StatusCode::Error,
+                            ok_res
+                                .status()
+                                .canonical_reason()
+                                .map(ToString::to_string)
+                                .unwrap_or_default(),
+                        );
                     };
-                    span.set_status(status_code, String::new());
                     span.end();
                     Ok(ok_res)
                 }
@@ -249,7 +253,7 @@ where
                 }
             });
 
-        #[cfg(feature="sync-middleware")]
+        #[cfg(feature = "sync-middleware")]
         drop(attachment);
         Box::pin(async move { fut.await })
     }

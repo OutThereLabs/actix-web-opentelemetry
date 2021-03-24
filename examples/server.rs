@@ -1,6 +1,8 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::RequestTracing;
-use opentelemetry::{global, sdk::propagation::TraceContextPropagator};
+use opentelemetry::{
+    global, runtime::TokioCurrentThread, sdk::propagation::TraceContextPropagator,
+};
 use std::io;
 
 async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
@@ -11,9 +13,9 @@ async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'stat
 async fn main() -> io::Result<()> {
     // Start a new jaeger trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
-    let (_tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
+    let _tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("actix_server")
-        .install()
+        .install_batch(TokioCurrentThread)
         .expect("pipeline install error");
 
     // Start a new prometheus metrics pipeline if --features metrics is used
@@ -41,5 +43,10 @@ async fn main() -> io::Result<()> {
     })
     .bind("127.0.0.1:8080")?
     .run()
-    .await
+    .await?;
+
+    // Ensure all spans have been reported
+    opentelemetry::global::shutdown_tracer_provider();
+
+    Ok(())
 }
