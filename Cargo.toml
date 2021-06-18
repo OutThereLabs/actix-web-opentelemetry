@@ -21,7 +21,7 @@ actix-web = { version = "4.0.0-beta.4", default-features = false, features = ["c
 awc = { version = "3.0.0-beta.3", default-features = false, features = ["compress"] }
 futures = "0.3"
 opentelemetry = { version = "0.13", default-features = false, features = ["trace", "metrics", "rt-tokio-current-thread"] }
-opentelemetry-prometheus = { version = "0.6", optional = true }
+opentelemetry-prometheus = { version = "0.8", optional = true }
 opentelemetry-semantic-conventions = "0.5"
 prometheus = { version = "0.12", default-features = false, optional = true }
 serde = "1.0"
