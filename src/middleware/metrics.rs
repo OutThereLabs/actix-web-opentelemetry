@@ -1,6 +1,6 @@
 //! # Metrics Middleware
 use crate::RouteFormatter;
-use actix_web::dev;
+use actix_web::{dev, http::StatusCode};
 use futures::{
     future::{self, FutureExt},
     Future,
@@ -142,18 +142,17 @@ where
     }
 }
 
-impl<S, B, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
+impl<S, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
 where
     S: dev::Service<
         dev::ServiceRequest,
-        Response = dev::ServiceResponse<B>,
+        Response = dev::ServiceResponse,
         Error = actix_web::Error,
     >,
     S::Future: 'static,
-    B: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
-    type Response = dev::ServiceResponse<B>;
+    type Response = dev::ServiceResponse;
     type Error = actix_web::Error;
     type Transform = RequestMetricsMiddleware<S, F>;
     type InitError = ();
@@ -177,18 +176,17 @@ where
     inner: Arc<RequestMetrics<F>>,
 }
 
-impl<S, B, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
+impl<S, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
 where
     S: dev::Service<
         dev::ServiceRequest,
-        Response = dev::ServiceResponse<B>,
+        Response = dev::ServiceResponse,
         Error = actix_web::Error,
     >,
     S::Future: 'static,
-    B: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
-    type Response = dev::ServiceResponse<B>;
+    type Response = dev::ServiceResponse;
     type Error = actix_web::Error;
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
@@ -207,9 +205,7 @@ where
         {
             Box::pin(future::ok(
                 req.into_response(
-                    actix_web::HttpResponse::Ok()
-                        .body(dev::Body::from_message(self.inner.metrics()))
-                        .into_body(),
+                    actix_web::HttpResponse::with_body(StatusCode::OK, dev::Body::from_message(self.inner.metrics()))
                 ),
             ))
         } else {

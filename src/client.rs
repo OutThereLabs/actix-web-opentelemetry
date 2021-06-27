@@ -7,12 +7,7 @@ use actix_web::{
 };
 use awc::{error::SendRequestError, ClientRequest, ClientResponse};
 use futures::{future::TryFutureExt, Future, Stream};
-use opentelemetry::{
-    global,
-    propagation::Injector,
-    trace::{SpanKind, StatusCode, TraceContextExt, Tracer},
-    Context,
-};
+use opentelemetry::{Context, KeyValue, global, propagation::Injector, trace::{SpanKind, StatusCode, TraceContextExt, Tracer}};
 use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
 };
@@ -131,7 +126,7 @@ impl InstrumentedClientRequest {
     pub async fn send_stream<S, E>(self, stream: S) -> AwcResult
     where
         S: Stream<Item = Result<Bytes, E>> + Unpin + 'static,
-        E: Into<Error> + 'static,
+        E: std::error::Error + Into<Error> + 'static,
     {
         self.trace_request(|request| request.send_stream(stream))
             .await
@@ -144,9 +139,9 @@ impl InstrumentedClientRequest {
     {
         let tracer = global::tracer("actix-client");
         let mut attributes = vec![
-            HTTP_METHOD.string(http_method_str(self.request.get_method())),
-            HTTP_URL.string(self.request.get_uri().to_string()),
-            HTTP_FLAVOR.string(format!("{:?}", self.request.get_version()).replace("HTTP/", "")),
+            KeyValue::new(HTTP_METHOD, http_method_str(self.request.get_method())),
+            KeyValue::new(HTTP_URL, self.request.get_uri().to_string()),
+            KeyValue::new(HTTP_FLAVOR, format!("{:?}", self.request.get_version()).replace("HTTP/", "")),
         ];
 
         if let Some(peer_addr) = self.request.get_peer_addr() {
@@ -170,7 +165,6 @@ impl InstrumentedClientRequest {
                         .unwrap_or(""),
                     self.request.get_uri().path()
                 )
-                .as_str(),
             )
             .with_kind(SpanKind::Client)
             .with_attributes(attributes)
@@ -183,7 +177,7 @@ impl InstrumentedClientRequest {
         });
 
         f(self.request)
-            .inspect_ok(|res| record_response(&res, &cx))
+            .inspect_ok(|res| record_response(res, &cx))
             .inspect_err(|err| record_err(err, &cx))
             .await
     }
