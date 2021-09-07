@@ -1,6 +1,6 @@
 [package]
 name = "actix-web-opentelemetry"
-version = "0.11.0-beta.4"
+version = "0.11.0-beta.5"
 authors = ["Julian Tescher <julian@outtherelabs.com>"]
 description = "OpenTelemetry integration for Actix Web apps"
 homepage = "https://github.com/OutThereLabs/actix-web-opentelemetry"
