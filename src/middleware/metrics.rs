@@ -205,7 +205,7 @@ where
         {
             Box::pin(future::ok(
                 req.into_response(
-                    actix_web::HttpResponse::with_body(StatusCode::OK, dev::Body::from_message(self.inner.metrics()))
+                    actix_web::HttpResponse::with_body(StatusCode::OK, dev::AnyBody::new_boxed(self.inner.metrics()))
                 ),
             ))
         } else {

@@ -1,7 +1,7 @@
 use crate::util::http_method_str;
 use actix_http::{encoding::Decoder, Error, Payload, PayloadStream};
 use actix_web::{
-    body::Body,
+    body::AnyBody,
     http::{HeaderName, HeaderValue},
     web::Bytes,
 };
@@ -98,7 +98,7 @@ impl InstrumentedClientRequest {
     /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_body<B>(self, body: B) -> AwcResult
     where
-        B: Into<Body>,
+        B: Into<AnyBody>,
     {
         self.trace_request(|request| request.send_body(body)).await
     }
