@@ -1,5 +1,12 @@
 # Changelog
 
+
+## [v0.11.0-beta.6](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.5..v0.11.0-beta.6)
+
+### Changed
+
+- Update actix-web and actix-http requirements to beta.13 (#84)
+
 ## [v0.11.0-beta.5](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.4..v0.11.0-beta.5)
 
 ### Changed
