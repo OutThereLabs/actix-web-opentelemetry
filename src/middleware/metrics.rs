@@ -1,7 +1,7 @@
 //! # Metrics Middleware
 use crate::RouteFormatter;
 use actix_web::{body::EitherBody, dev, http::StatusCode};
-use futures::future::{self, FutureExt, LocalBoxFuture};
+use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
     global,
     metrics::{

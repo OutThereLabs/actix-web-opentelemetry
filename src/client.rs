@@ -6,7 +6,7 @@ use actix_web::{
     web::Bytes,
 };
 use awc::{error::SendRequestError, ClientRequest, ClientResponse};
-use futures::{future::TryFutureExt, Future, Stream};
+use futures_util::{future::TryFutureExt as _, Future, Stream};
 use opentelemetry::{
     global,
     propagation::Injector,
