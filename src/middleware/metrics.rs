@@ -1,5 +1,6 @@
 //! # Metrics Middleware
 use crate::RouteFormatter;
+use actix_http::body::BoxBody;
 use actix_web::{dev, http::StatusCode};
 use futures::{
     future::{self, FutureExt},
@@ -144,11 +145,7 @@ where
 
 impl<S, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
 where
-    S: dev::Service<
-        dev::ServiceRequest,
-        Response = dev::ServiceResponse,
-        Error = actix_web::Error,
-    >,
+    S: dev::Service<dev::ServiceRequest, Response = dev::ServiceResponse, Error = actix_web::Error>,
     S::Future: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
@@ -178,11 +175,7 @@ where
 
 impl<S, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
 where
-    S: dev::Service<
-        dev::ServiceRequest,
-        Response = dev::ServiceResponse,
-        Error = actix_web::Error,
-    >,
+    S: dev::Service<dev::ServiceRequest, Response = dev::ServiceResponse, Error = actix_web::Error>,
     S::Future: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
@@ -203,11 +196,12 @@ where
             .map(|f| f(&req))
             .unwrap_or(false)
         {
-            Box::pin(future::ok(
-                req.into_response(
-                    actix_web::HttpResponse::with_body(StatusCode::OK, dev::AnyBody::new_boxed(self.inner.metrics()))
+            Box::pin(future::ok(req.into_response(
+                actix_web::HttpResponse::with_body(
+                    StatusCode::OK,
+                    BoxBody::new(self.inner.metrics()),
                 ),
-            ))
+            )))
         } else {
             let timer = SystemTime::now();
             let request_metrics = self.inner.clone();

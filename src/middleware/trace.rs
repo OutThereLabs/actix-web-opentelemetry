@@ -1,5 +1,6 @@
 use super::route_formatter::RouteFormatter;
 use crate::util::{http_flavor, http_method_str, http_scheme};
+use actix_http::header::HeaderMap;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::{http::header, Error};
 use futures::{
@@ -260,11 +261,11 @@ where
 }
 
 struct RequestHeaderCarrier<'a> {
-    headers: &'a actix_web::http::HeaderMap,
+    headers: &'a HeaderMap,
 }
 
 impl<'a> RequestHeaderCarrier<'a> {
-    fn new(headers: &'a actix_web::http::HeaderMap) -> Self {
+    fn new(headers: &'a HeaderMap) -> Self {
         RequestHeaderCarrier { headers }
     }
 }
