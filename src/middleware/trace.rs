@@ -1,8 +1,10 @@
 use super::route_formatter::RouteFormatter;
 use crate::util::{http_flavor, http_method_str, http_scheme};
-use actix_http::header::HeaderMap;
-use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::{http::header, Error};
+use actix_web::{
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
+    http::header::{self, HeaderMap},
+    Error,
+};
 use futures::{
     future::{ok, FutureExt, Ready},
     Future,
@@ -17,10 +19,7 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_SERVER_NAME,
     HTTP_STATUS_CODE, HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
 };
-use std::borrow::Cow;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::task::Poll;
+use std::{borrow::Cow, pin::Pin, rc::Rc, task::Poll};
 
 /// Request tracing middleware.
 ///
