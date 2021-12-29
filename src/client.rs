@@ -1,13 +1,12 @@
 use crate::util::http_method_str;
-use actix_http::{
+use actix_http::{encoding::Decoder, BoxedPayloadStream, Error, Payload};
+use actix_web::{
     body::MessageBody,
-    encoding::Decoder,
-    header::{HeaderName, HeaderValue},
-    BoxedPayloadStream, Error, Payload,
+    http::header::{HeaderName, HeaderValue},
+    web::Bytes,
 };
-use actix_web::web::Bytes;
 use awc::{error::SendRequestError, ClientRequest, ClientResponse};
-use futures::{future::TryFutureExt, Future, Stream};
+use futures_util::{future::TryFutureExt as _, Future, Stream};
 use opentelemetry::{
     global,
     propagation::Injector,
