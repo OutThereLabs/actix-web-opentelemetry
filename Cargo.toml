@@ -23,7 +23,7 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 opentelemetry = { version = "0.16", default-features = false, features = ["trace", "metrics", "rt-tokio-current-thread"] }
 opentelemetry-prometheus = { version = "0.9", optional = true }
 opentelemetry-semantic-conventions = "0.8"
-prometheus = { version = "0.12", default-features = false, optional = true }
+prometheus = { version = "0.13", default-features = false, optional = true }
 serde = "1.0"
 
 [dev-dependencies]
