@@ -18,7 +18,6 @@
 //! ```no_run
 //! use awc::{Client, error::SendRequestError};
 //! use actix_web_opentelemetry::ClientExt;
-//! use futures::Future;
 //!
 //! async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
 //!     let res = client

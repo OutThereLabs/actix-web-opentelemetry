@@ -1,13 +1,21 @@
 use crate::util::http_method_str;
-use actix_http::{encoding::Decoder, Error, Payload, PayloadStream, http};
+use actix_http::{encoding::Decoder, BoxedPayloadStream, Error, Payload};
 use actix_web::{
-    body::AnyBody,
-    http::{HeaderName, HeaderValue},
+    body::MessageBody,
+    http::{
+        self,
+        header::{HeaderName, HeaderValue},
+    },
     web::Bytes,
 };
 use awc::{error::SendRequestError, ClientRequest, ClientResponse};
-use futures::{future::TryFutureExt, Future, Stream};
-use opentelemetry::{Context, KeyValue, global, propagation::Injector, trace::{SpanKind, StatusCode, TraceContextExt, Tracer}};
+use futures_util::{future::TryFutureExt as _, Future, Stream};
+use opentelemetry::{
+    global,
+    propagation::Injector,
+    trace::{SpanKind, StatusCode, TraceContextExt, Tracer},
+    Context, KeyValue,
+};
 use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
 };
@@ -83,7 +91,7 @@ impl ClientExt for ClientRequest {
     }
 }
 
-type AwcResult = Result<ClientResponse<Decoder<Payload<PayloadStream>>>, SendRequestError>;
+type AwcResult = Result<ClientResponse<Decoder<Payload<BoxedPayloadStream>>>, SendRequestError>;
 
 impl InstrumentedClientRequest {
     /// Generate an awc [`ClientResponse`] from a traced request with an empty body.
@@ -98,7 +106,7 @@ impl InstrumentedClientRequest {
     /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_body<B>(self, body: B) -> AwcResult
     where
-        B: Into<AnyBody>,
+        B: MessageBody + 'static,
     {
         self.trace_request(|request| request.send_body(body)).await
     }
@@ -141,7 +149,10 @@ impl InstrumentedClientRequest {
         let mut attributes = vec![
             KeyValue::new(HTTP_METHOD, http_method_str(self.request.get_method())),
             KeyValue::new(HTTP_URL, self.request.get_uri().to_string()),
-            KeyValue::new(HTTP_FLAVOR, format!("{:?}", self.request.get_version()).replace("HTTP/", "")),
+            KeyValue::new(
+                HTTP_FLAVOR,
+                format!("{:?}", self.request.get_version()).replace("HTTP/", ""),
+            ),
         ];
 
         if let Some(peer_addr) = self.request.get_peer_addr() {
@@ -149,23 +160,21 @@ impl InstrumentedClientRequest {
         }
 
         let span = tracer
-            .span_builder(
-                format!(
-                    "{} {}{}{}",
-                    self.request.get_method(),
-                    self.request
-                        .get_uri()
-                        .scheme()
-                        .map(|s| format!("{}://", s.as_str()))
-                        .unwrap_or_else(String::new),
-                    self.request
-                        .get_uri()
-                        .authority()
-                        .map(|s| s.as_str())
-                        .unwrap_or(""),
-                    self.request.get_uri().path()
-                )
-            )
+            .span_builder(format!(
+                "{} {}{}{}",
+                self.request.get_method(),
+                self.request
+                    .get_uri()
+                    .scheme()
+                    .map(|s| format!("{}://", s.as_str()))
+                    .unwrap_or_else(String::new),
+                self.request
+                    .get_uri()
+                    .authority()
+                    .map(|s| s.as_str())
+                    .unwrap_or(""),
+                self.request.get_uri().path()
+            ))
             .with_kind(SpanKind::Client)
             .with_attributes(attributes)
             .with_parent_context(self.cx.clone())
@@ -187,16 +196,13 @@ impl InstrumentedClientRequest {
 // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/http.md#status
 fn convert_status(status: http::StatusCode) -> (StatusCode, Option<String>) {
     match status.as_u16() {
-        100..=399 => {
-            (StatusCode::Unset, None)
-        },
+        100..=399 => (StatusCode::Unset, None),
         // since we are the client, we MUST treat 4xx as error
-        400..=599 => {
-            (StatusCode::Error, None)
-        },
-        code => {
-            (StatusCode::Error, Some(format!("Invalid HTTP status code {}", code)))
-        }
+        400..=599 => (StatusCode::Error, None),
+        code => (
+            StatusCode::Error,
+            Some(format!("Invalid HTTP status code {}", code)),
+        ),
     }
 }
 

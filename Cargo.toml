@@ -16,10 +16,10 @@ metrics = ["opentelemetry/metrics", "opentelemetry-prometheus", "prometheus"]
 sync-middleware = []
 
 [dependencies]
-actix-http = { version = "3.0.0-beta.13", default-features = false, features = ["compress-zstd"] }
-actix-web = { version = "4.0.0-beta.13", default-features = false, features = ["compress-zstd"] }
-awc = { version = "3.0.0-beta.7", default-features = false, features = ["compress-zstd"] }
-futures = "0.3"
+actix-http = { version = "3.0.0-beta.17", default-features = false, features = ["compress-zstd"] }
+actix-web = { version = "4.0.0-beta.16", default-features = false, features = ["compress-zstd"] }
+awc = { version = "3.0.0-beta.15", default-features = false, features = ["compress-zstd"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 opentelemetry = { version = "0.16", default-features = false, features = ["trace", "metrics", "rt-tokio-current-thread"] }
 opentelemetry-prometheus = { version = "0.9", optional = true }
 opentelemetry-semantic-conventions = "0.8"

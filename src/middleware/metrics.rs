@@ -1,10 +1,7 @@
 //! # Metrics Middleware
 use crate::RouteFormatter;
-use actix_web::{dev, http::StatusCode};
-use futures::{
-    future::{self, FutureExt},
-    Future,
-};
+use actix_web::{body::EitherBody, dev, http::StatusCode};
+use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
     global,
     metrics::{
@@ -14,10 +11,7 @@ use opentelemetry::{
 };
 use opentelemetry_prometheus::PrometheusExporter;
 use prometheus::{Encoder, TextEncoder};
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::Poll;
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 
 /// Request metrics tracking
 ///
@@ -142,17 +136,18 @@ where
     }
 }
 
-impl<S, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
+impl<S, B, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
 where
     S: dev::Service<
         dev::ServiceRequest,
-        Response = dev::ServiceResponse,
+        Response = dev::ServiceResponse<B>,
         Error = actix_web::Error,
     >,
     S::Future: 'static,
+    B: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
-    type Response = dev::ServiceResponse;
+    type Response = dev::ServiceResponse<EitherBody<B, String>>;
     type Error = actix_web::Error;
     type Transform = RequestMetricsMiddleware<S, F>;
     type InitError = ();
@@ -176,24 +171,22 @@ where
     inner: Arc<RequestMetrics<F>>,
 }
 
-impl<S, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
+impl<S, B, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
 where
     S: dev::Service<
         dev::ServiceRequest,
-        Response = dev::ServiceResponse,
+        Response = dev::ServiceResponse<B>,
         Error = actix_web::Error,
     >,
     S::Future: 'static,
+    B: 'static,
     F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
 {
-    type Response = dev::ServiceResponse;
+    type Response = dev::ServiceResponse<EitherBody<B, String>>;
     type Error = actix_web::Error;
-    #[allow(clippy::type_complexity)]
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
+    dev::forward_ready!(service);
 
     fn call(&self, req: dev::ServiceRequest) -> Self::Future {
         if self
@@ -204,9 +197,11 @@ where
             .unwrap_or(false)
         {
             Box::pin(future::ok(
-                req.into_response(
-                    actix_web::HttpResponse::with_body(StatusCode::OK, dev::AnyBody::new_boxed(self.inner.metrics()))
-                ),
+                req.into_response(actix_web::HttpResponse::with_body(
+                    StatusCode::OK,
+                    self.inner.metrics(),
+                ))
+                .map_into_right_body(),
             ))
         } else {
             let timer = SystemTime::now();
@@ -231,9 +226,9 @@ where
                         &labels,
                     );
 
-                    Ok(res)
+                    Ok(res.map_into_left_body())
                 } else {
-                    res
+                    res.map(|res| res.map_into_left_body())
                 }
             }))
         }

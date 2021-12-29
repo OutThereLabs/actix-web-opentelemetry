@@ -1,11 +1,11 @@
 use super::route_formatter::RouteFormatter;
 use crate::util::{http_flavor, http_method_str, http_scheme};
-use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::{http::header, Error};
-use futures::{
-    future::{ok, FutureExt, Ready},
-    Future,
+use actix_web::{
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
+    http::header::{self, HeaderMap},
+    Error,
 };
+use futures_util::future::{ok, FutureExt as _, LocalBoxFuture, Ready};
 use opentelemetry::{
     global,
     propagation::Extractor,
@@ -16,10 +16,7 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_SERVER_NAME,
     HTTP_STATUS_CODE, HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
 };
-use std::borrow::Cow;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::task::Poll;
+use std::{borrow::Cow, rc::Rc, task::Poll};
 
 /// Request tracing middleware.
 ///
@@ -156,8 +153,7 @@ where
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
-    #[allow(clippy::type_complexity)]
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
@@ -260,11 +256,11 @@ where
 }
 
 struct RequestHeaderCarrier<'a> {
-    headers: &'a actix_web::http::HeaderMap,
+    headers: &'a HeaderMap,
 }
 
 impl<'a> RequestHeaderCarrier<'a> {
-    fn new(headers: &'a actix_web::http::HeaderMap) -> Self {
+    fn new(headers: &'a HeaderMap) -> Self {
         RequestHeaderCarrier { headers }
     }
 }
