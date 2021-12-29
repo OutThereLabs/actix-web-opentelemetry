@@ -20,7 +20,9 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
 };
 use serde::Serialize;
+use std::array::IntoIter;
 use std::fmt;
+use std::mem;
 use std::str::FromStr;
 
 /// A wrapper for the actix-web [`ClientRequest`].
@@ -29,6 +31,7 @@ use std::str::FromStr;
 #[derive(Debug)]
 pub struct InstrumentedClientRequest {
     cx: Context,
+    attrs: Vec<KeyValue>,
     request: ClientRequest,
 }
 
@@ -87,7 +90,11 @@ pub trait ClientExt {
 
 impl ClientExt for ClientRequest {
     fn trace_request_with_context(self, cx: Context) -> InstrumentedClientRequest {
-        InstrumentedClientRequest { cx, request: self }
+        InstrumentedClientRequest {
+            cx,
+            attrs: Vec::new(),
+            request: self,
+        }
     }
 }
 
@@ -146,17 +153,17 @@ impl InstrumentedClientRequest {
         R: Future<Output = AwcResult>,
     {
         let tracer = global::tracer("actix-client");
-        let mut attributes = vec![
+        self.attrs.extend(&mut IntoIter::new([
             KeyValue::new(HTTP_METHOD, http_method_str(self.request.get_method())),
             KeyValue::new(HTTP_URL, self.request.get_uri().to_string()),
             KeyValue::new(
                 HTTP_FLAVOR,
                 format!("{:?}", self.request.get_version()).replace("HTTP/", ""),
             ),
-        ];
+        ]));
 
         if let Some(peer_addr) = self.request.get_peer_addr() {
-            attributes.push(NET_PEER_IP.string(peer_addr.to_string()));
+            self.attrs.push(NET_PEER_IP.string(peer_addr.to_string()));
         }
 
         let span = tracer
@@ -176,7 +183,7 @@ impl InstrumentedClientRequest {
                 self.request.get_uri().path()
             ))
             .with_kind(SpanKind::Client)
-            .with_attributes(attributes)
+            .with_attributes(mem::take(&mut self.attrs))
             .with_parent_context(self.cx.clone())
             .start(&tracer);
         let cx = self.cx.with_span(span);
@@ -189,6 +196,37 @@ impl InstrumentedClientRequest {
             .inspect_ok(|res| record_response(res, &cx))
             .inspect_err(|err| record_err(err, &cx))
             .await
+    }
+
+    /// Add additional attributes to the instrumented span for a given request.
+    ///
+    /// The standard otel attributes will still be tracked.
+    ///
+    /// Example:
+    /// ```
+    /// use actix_web_opentelemetry::ClientExt;
+    /// use awc::{Client, error::SendRequestError};
+    /// use opentelemetry::KeyValue;
+    ///
+    /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
+    ///     let attrs = [KeyValue::new("dye-key", "dye-value")];
+    ///     let res = client.get("http://localhost:8080")
+    ///         // Add `trace_request` before `send` to any awc request to add instrumentation
+    ///         .trace_request()
+    ///         .with_attributes(attrs)
+    ///         .send()
+    ///         .await?;
+    ///
+    ///     println!("Response: {:?}", res);
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_attributes(
+        mut self,
+        attrs: impl IntoIterator<Item = KeyValue>,
+    ) -> InstrumentedClientRequest {
+        self.attrs.extend(&mut attrs.into_iter());
+        self
     }
 }
 
