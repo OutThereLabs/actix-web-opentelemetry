@@ -2,8 +2,11 @@
 //!
 //! This crate allows you to easily instrument client and server requests.
 //!
-//! * Client requests can be traced by using the [`ClientExt::trace_request`] function.
 //! * Server requests can be traced by using the [`RequestTracing`] middleware.
+//!
+//! The `awc` feature allows you to instrument client requests made by the [awc] crate.
+//!
+//! * Client requests can be traced by using the [`ClientExt::trace_request`] method.
 //!
 //! The `metrics` feature allows you to expose request metrics to [Prometheus].
 //!
@@ -11,11 +14,16 @@
 //!
 //! [OpenTelemetry]: https://opentelemetry.io
 //! [Actix Web]: https://actix.rs
+//! [awc]: https://docs.rs/awc
 //! [Prometheus]: https://prometheus.io
 //!
 //! ### Client Request Examples:
 //!
+//! Note: this requires the `awc` feature to be enabled.
+//!
 //! ```no_run
+//! # #[cfg(feature="awc")]
+//! # {
 //! use awc::{Client, error::SendRequestError};
 //! use actix_web_opentelemetry::ClientExt;
 //!
@@ -30,6 +38,7 @@
 //!     println!("Response: {:?}", res);
 //!     Ok(())
 //! }
+//! # }
 //! ```
 //!
 //! ### Server middleware examples:
@@ -104,10 +113,10 @@
 //! ```toml
 //! [dependencies]
 //! # if exporting to jaeger, use the `tokio` feature.
-//! opentelemetry-jaeger = { version = "*", features = ["tokio"] }
+//! opentelemetry-jaeger = { version = "..", features = ["rt-tokio-current-thread"] }
 //!
 //! # if exporting to zipkin, use the `tokio` based `reqwest-client` feature.
-//! opentelemetry-zipkin = { version = "*", features = ["reqwest-client"], default-features = false }
+//! opentelemetry-zipkin = { version = "..", features = ["reqwest-client"], default-features = false }
 //!
 //! # ... ensure the same same for any other exporters
 //! ```
@@ -118,15 +127,16 @@
 #![cfg_attr(test, deny(warnings))]
 #![cfg_attr(docsrs, feature(doc_cfg), deny(broken_intra_doc_links))]
 
+#[cfg(feature = "awc")]
 mod client;
 mod middleware;
 pub(crate) mod util;
 
+#[cfg(feature = "awc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "awc")))]
+pub use client::{ClientExt, InstrumentedClientRequest};
+
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub use middleware::metrics::{RequestMetrics, RequestMetricsMiddleware};
-pub use {
-    client::{ClientExt, InstrumentedClientRequest},
-    middleware::route_formatter::RouteFormatter,
-    middleware::trace::RequestTracing,
-};
+pub use {middleware::route_formatter::RouteFormatter, middleware::trace::RequestTracing};

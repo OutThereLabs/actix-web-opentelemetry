@@ -25,9 +25,7 @@ use std::fmt;
 use std::mem;
 use std::str::FromStr;
 
-/// A wrapper for the actix-web [`ClientRequest`].
-///
-/// [`ClientRequest`]: actix_web::client::ClientRequest
+/// A wrapper for the actix-web [awc::ClientRequest].
 #[derive(Debug)]
 pub struct InstrumentedClientRequest {
     cx: Context,
@@ -35,11 +33,9 @@ pub struct InstrumentedClientRequest {
     request: ClientRequest,
 }
 
-/// OpenTelemetry extensions for actix-web's [`Client`].
-///
-/// [`Client`]: actix_web::client::Client
+/// OpenTelemetry extensions for actix-web's [awc::Client].
 pub trait ClientExt {
-    /// Trace an `actix_web::client::Client` request using the current context.
+    /// Trace an [awc::Client] request using the current context.
     ///
     /// Example:
     /// ```no_run
@@ -64,9 +60,8 @@ pub trait ClientExt {
         self.trace_request_with_context(Context::current())
     }
 
-    /// Trace an [`actix_web::client::Client`] request using the given span context.
+    /// Trace an [awc::Client] request using the given span context.
     ///
-    ///[`actix_web::client::Client`]: actix_web::client::Client
     /// Example:
     /// ```no_run
     /// use actix_web_opentelemetry::ClientExt;
@@ -101,16 +96,12 @@ impl ClientExt for ClientRequest {
 type AwcResult = Result<ClientResponse<Decoder<Payload<BoxedPayloadStream>>>, SendRequestError>;
 
 impl InstrumentedClientRequest {
-    /// Generate an awc [`ClientResponse`] from a traced request with an empty body.
-    ///
-    /// [`ClientResponse`]: actix_web::client::ClientResponse
+    /// Generate an [`awc::ClientResponse`] from a traced request with an empty body.
     pub async fn send(self) -> AwcResult {
         self.trace_request(|request| request.send()).await
     }
 
-    /// Generate an awc [`ClientResponse`] from a traced request with the given body.
-    ///
-    /// [`ClientResponse`]: actix_web::client::ClientResponse
+    /// Generate an [awc::ClientResponse] from a traced request with the given body.
     pub async fn send_body<B>(self, body: B) -> AwcResult
     where
         B: MessageBody + 'static,
@@ -118,26 +109,20 @@ impl InstrumentedClientRequest {
         self.trace_request(|request| request.send_body(body)).await
     }
 
-    /// Generate an awc [`ClientResponse`] from a traced request with the given form
+    /// Generate an [awc::ClientResponse] from a traced request with the given form
     /// body.
-    ///
-    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_form<T: Serialize>(self, value: &T) -> AwcResult {
         self.trace_request(|request| request.send_form(value)).await
     }
 
-    /// Generate an awc [`ClientResponse`] from a traced request with the given JSON
+    /// Generate an [awc::ClientResponse] from a traced request with the given JSON
     /// body.
-    ///
-    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_json<T: Serialize>(self, value: &T) -> AwcResult {
         self.trace_request(|request| request.send_json(value)).await
     }
 
-    /// Generate an awc [`ClientResponse`] from a traced request with the given stream
+    /// Generate an [awc::ClientResponse] from a traced request with the given stream
     /// body.
-    ///
-    /// [`ClientResponse`]: actix_web::client::ClientResponse
     pub async fn send_stream<S, E>(self, stream: S) -> AwcResult
     where
         S: Stream<Item = Result<Bytes, E>> + Unpin + 'static,
