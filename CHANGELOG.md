@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.11.0-beta.7](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.6..v0.11.0-beta.7)
+
+### Added
+
+- Add `with_attributes` method to client extension (#91)
+
+### Changed
+
+- Add http status code handling for client (#88)
+- Update to actix-http beta.17, actix-web beta.16, awc beta.15 (#89)
+- Make `awc` client tracing an optional feature (#92)
 
 ## [v0.11.0-beta.6](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.5..v0.11.0-beta.6)
 
