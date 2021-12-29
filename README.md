@@ -15,10 +15,10 @@ configured to be non-blocking:
 ```toml
 [dependencies]
 # if exporting to jaeger, use the `tokio` feature.
-opentelemetry-jaeger = { version = "*", features = ["tokio"] }
+opentelemetry-jaeger = { version = "..", features = ["rt-tokio-current-thread"] }
 
 # if exporting to zipkin, use the `tokio` based `reqwest-client` feature.
-opentelemetry-zipkin = { version = "*", features = ["reqwest-client"], default-features = false }
+opentelemetry-zipkin = { version = "..", features = ["reqwest-client"], default-features = false }
 
 # ... ensure the same same for any other exporters
 ```
@@ -35,7 +35,7 @@ $ docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 jaegertracing/all-
 # Run server example with tracing middleware
 $ cargo run --example server
 # (In other tab) Run client example with request tracing
-$ cargo run --example client
+$ cargo run --example client --features awc
 
 # View spans (see the image below)
 $ firefox http://localhost:16686/
@@ -45,5 +45,6 @@ $ firefox http://localhost:16686/
 
 ### Features
 
+- `awc` -- enable support for tracing the `awc` http client.
 - `metrics` -- enable support for opentelemetry metrics (only traces are enabled by default)
 - `sync-middleware` -- enable tracing on actix-web middlewares that do synchronous work before returning a future. Adds a small amount of overhead to every request.
