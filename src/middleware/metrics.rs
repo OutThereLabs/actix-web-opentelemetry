@@ -95,12 +95,12 @@ where
     ) -> Self {
         let exporter = exporter.unwrap_or_else(|| opentelemetry_prometheus::exporter().init());
         let http_requests_total = meter
-            .u64_counter("http_requests_total")
+            .u64_counter("http_request_total")
             .with_description("HTTP requests per route")
             .init();
 
         let http_requests_duration_seconds = meter
-            .f64_value_recorder("http_requests_duration")
+            .f64_value_recorder("http_request_duration_seconds")
             .with_description("HTTP request duration per route")
             // TODO: https://github.com/open-telemetry/opentelemetry-rust/issues/276
             // .with_unit(Unit::new("seconds"))
