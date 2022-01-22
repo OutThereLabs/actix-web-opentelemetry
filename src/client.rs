@@ -169,8 +169,7 @@ impl InstrumentedClientRequest {
             ))
             .with_kind(SpanKind::Client)
             .with_attributes(mem::take(&mut self.attrs))
-            .with_parent_context(self.cx.clone())
-            .start(&tracer);
+            .start_with_context(&tracer, &self.cx);
         let cx = self.cx.with_span(span);
 
         global::get_text_map_propagator(|injector| {
