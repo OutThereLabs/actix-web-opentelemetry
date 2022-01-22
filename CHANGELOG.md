@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.11.0-beta.8](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.7..v0.11.0-beta.8)
+
+### Changed
+
+- Update to opentelemetry v0.17.x (#94)
+- Fix metric names to be aligned with prometheus standards (#95)
+
 ## [v0.11.0-beta.7](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.6..v0.11.0-beta.7)
 
 ### Added
