@@ -20,7 +20,6 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
 };
 use serde::Serialize;
-use std::array::IntoIter;
 use std::fmt;
 use std::mem;
 use std::str::FromStr;
@@ -138,7 +137,7 @@ impl InstrumentedClientRequest {
         R: Future<Output = AwcResult>,
     {
         let tracer = global::tracer("actix-client");
-        self.attrs.extend(&mut IntoIter::new([
+        self.attrs.extend(&mut IntoIterator::into_iter([
             KeyValue::new(HTTP_METHOD, http_method_str(self.request.get_method())),
             KeyValue::new(HTTP_URL, self.request.get_uri().to_string()),
             KeyValue::new(
