@@ -16,18 +16,19 @@ metrics = ["opentelemetry/metrics", "opentelemetry-prometheus", "prometheus"]
 sync-middleware = []
 
 [dependencies]
-actix-http = { version = "3.0.0-beta.17", default-features = false, features = ["compress-zstd"] }
-actix-web = { version = "4.0.0-beta.16", default-features = false, features = ["compress-zstd"] }
+actix-http = { version = "3.0", default-features = false, features = ["compress-zstd"] }
+actix-web = { version = "4.0", default-features = false, features = ["compress-zstd"] }
 awc = { version = "3.0.0-beta.15", optional = true, default-features = false, features = ["compress-zstd"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
-opentelemetry = { version = "0.17", default-features = false, features = ["trace", "metrics", "rt-tokio-current-thread"] }
+opentelemetry = { version = "0.17", default-features = false, features = ["trace", "rt-tokio-current-thread"] }
 opentelemetry-prometheus = { version = "0.10", optional = true }
 opentelemetry-semantic-conventions = "0.9"
 prometheus = { version = "0.13", default-features = false, optional = true }
 serde = "1.0"
 
 [dev-dependencies]
-actix-web-opentelemetry = { path = ".", features = ["metrics", "sync-middleware"] }
+actix-web = { version = "4.0", features = ["macros"] }
+actix-web-opentelemetry = { path = ".", features = ["metrics", "sync-middleware", "awc"] }
 opentelemetry-jaeger = { version = "0.16", features = ["rt-tokio-current-thread"] }
 
 [package.metadata.docs.rs]

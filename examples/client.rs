@@ -1,14 +1,11 @@
-#[cfg(feature = "awc")]
 use actix_web_opentelemetry::ClientExt;
 use opentelemetry::{global, sdk::propagation::TraceContextPropagator};
 use std::error::Error;
-#[cfg(feature = "awc")]
 use std::io;
 
-#[cfg(feature = "awc")]
 async fn execute_request(client: awc::Client) -> io::Result<String> {
     let mut response = client
-        .get("http://localhost:8080/users/103240ba-3d8d-4695-a176-e19cbc627483?a=1")
+        .get("http://127.0.0.1:8080/users/103240ba-3d8d-4695-a176-e19cbc627483?a=1")
         .trace_request()
         .send()
         .await
@@ -32,13 +29,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_service_name("actix_client")
         .install_simple()?;
 
-    #[cfg(feature = "awc")]
-    {
-        let client = awc::Client::new();
-        let response = execute_request(client).await?;
+    let client = awc::Client::new();
+    let response = execute_request(client).await?;
 
-        println!("Response: {}", response);
-    }
+    println!("Response: {}", response);
 
     Ok(())
 }
