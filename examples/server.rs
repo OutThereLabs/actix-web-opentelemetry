@@ -19,10 +19,8 @@ async fn main() -> io::Result<()> {
         .expect("pipeline install error");
 
     // Start a new prometheus metrics pipeline if --features metrics is used
-    #[cfg(feature = "metrics")]
     let exporter = opentelemetry_prometheus::exporter().init();
 
-    #[cfg(feature = "metrics")]
     let request_metrics = actix_web_opentelemetry::RequestMetrics::new(
         opentelemetry::global::meter("actix_web"),
         Some(|req: &actix_web::dev::ServiceRequest| {
@@ -36,7 +34,6 @@ async fn main() -> io::Result<()> {
             .wrap(RequestTracing::new())
             .service(web::resource("/users/{id}").to(index));
 
-        #[cfg(feature = "metrics")]
         let app = app.wrap(request_metrics.clone());
 
         app
