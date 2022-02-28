@@ -9,7 +9,7 @@ readme = "README.md"
 categories = ["api-bindings"]
 keywords = ["actix", "actix-web", "opentelemetry", "jaeger", "prometheus"]
 license = "MIT"
-edition = "2018"
+edition = "2021"
 
 [features]
 metrics = ["opentelemetry/metrics", "opentelemetry-prometheus", "prometheus"]
@@ -27,6 +27,7 @@ prometheus = { version = "0.13", default-features = false, optional = true }
 serde = "1.0"
 
 [dev-dependencies]
+actix-web = { version = "4.0.0-beta.16", features = ["macros"] }
 actix-web-opentelemetry = { path = ".", features = ["metrics", "sync-middleware"] }
 opentelemetry-jaeger = { version = "0.16", features = ["rt-tokio-current-thread"] }
 
