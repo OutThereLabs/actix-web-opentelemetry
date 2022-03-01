@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.12.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.8..v0.12.0)
+
+### Changed
+
+* Update to 2021 edition (#99)
+* Update to actix-web v4 (#97)
+
 ## [v0.11.0-beta.8](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.7..v0.11.0-beta.8)
 
 ### Changed
