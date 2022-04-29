@@ -1,5 +1,5 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
-use actix_web_opentelemetry::{RequestMetricsBuilder, RequestTracing};
+use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
 use opentelemetry::{
     global, runtime::TokioCurrentThread, sdk::propagation::TraceContextPropagator,
 };
@@ -36,7 +36,7 @@ async fn main() -> io::Result<()> {
         #[cfg(feature = "metrics-prometheus")]
         let app = app.route(
             "/metrics",
-            web::get().to(request_metrics.route(exporter.clone())),
+            web::get().to(PrometheusMetricsHandler::new(exporter.clone())),
         );
 
         app

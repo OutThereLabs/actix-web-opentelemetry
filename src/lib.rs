@@ -78,7 +78,7 @@
 //! ```no_run
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 //! #[cfg(feature = "metrics-prometheus")]
-//! use actix_web_opentelemetry::{RequestMetricsBuilder, RequestTracing};
+//! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
 //! use opentelemetry::global;
 //!
 //! #[cfg(feature = "metrics-prometheus")]
@@ -95,7 +95,7 @@
 //!         App::new()
 //!             .wrap(RequestTracing::new())
 //!             .wrap(request_metrics.clone())
-//!             .route("/metrics", web::get().to(request_metrics.route(exporter.clone())))
+//!             .route("/metrics", web::get().to(PrometheusMetricsHandler::new(exporter.clone())))
 //!         })
 //!         .bind("localhost:8080")?
 //!         .run()
@@ -138,7 +138,7 @@ pub use client::{ClientExt, InstrumentedClientRequest};
 
 #[cfg(feature = "metrics-prometheus")]
 #[cfg_attr(docsrs, doc(feature = "metrics-prometheus"))]
-pub use middleware::metrics::PrometheusMetricsHandler;
+pub use middleware::metrics::prometheus::PrometheusMetricsHandler;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub use middleware::metrics::{RequestMetrics, RequestMetricsBuilder, RequestMetricsMiddleware};
