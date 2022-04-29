@@ -1,99 +1,37 @@
 //! # Metrics Middleware
-use crate::RouteFormatter;
-use actix_web::{body::EitherBody, dev, http::StatusCode};
+
+use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
-    global,
-    metrics::{
-        noop::NoopMeterProvider, Counter, Meter, MeterProvider, MetricsError, ValueRecorder,
-    },
+    metrics::{Counter, Meter, ValueRecorder},
     Key,
 };
-use opentelemetry_prometheus::PrometheusExporter;
-use prometheus::{Encoder, TextEncoder};
 use std::{sync::Arc, time::SystemTime};
 
-/// Request metrics tracking
-///
-/// # Examples
-///
-/// ```no_run
-/// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-/// use actix_web_opentelemetry::RequestMetrics;
-/// use opentelemetry::global;
-///
-/// # async fn start_server() -> std::io::Result<()> {
-/// let exporter = opentelemetry_prometheus::exporter().init();
-/// let meter = global::meter("actix_web");
-///
-/// // Optional predicate to determine which requests render the prometheus metrics
-/// let metrics_route = |req: &dev::ServiceRequest| {
-///     req.path() == "/metrics" && req.method() == http::Method::GET
-/// };
-///
-/// // Request metrics middleware
-/// let request_metrics = RequestMetrics::new(meter, Some(metrics_route), Some(exporter));
-///
-/// // Run actix server, metrics are now available at http://localhost:8080/metrics
-/// HttpServer::new(move || App::new().wrap(request_metrics.clone()))
-///     .bind("localhost:8080")?
-///     .run()
-///     .await
-/// # }
-/// ```
-#[derive(Debug)]
-pub struct RequestMetrics<F>
-where
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
-{
-    exporter: PrometheusExporter,
-    route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
-    should_render_metrics: Option<F>,
-    http_requests_total: Counter<u64>,
-    http_requests_duration_seconds: ValueRecorder<f64>,
-}
+#[cfg(feature = "metrics-prometheus")]
+use actix_web::http::StatusCode;
+#[cfg(feature = "metrics-prometheus")]
+use opentelemetry::{global, metrics::MetricsError};
+#[cfg(feature = "metrics-prometheus")]
+use opentelemetry_prometheus::PrometheusExporter;
+#[cfg(feature = "metrics-prometheus")]
+use prometheus::{Encoder, TextEncoder};
 
-impl<F> Clone for RequestMetrics<F>
-where
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
-{
-    fn clone(&self) -> Self {
-        RequestMetrics {
-            exporter: self.exporter.clone(),
-            route_formatter: self.route_formatter.clone(),
-            should_render_metrics: self.should_render_metrics.clone(),
-            http_requests_total: self.http_requests_total.clone(),
-            http_requests_duration_seconds: self.http_requests_duration_seconds.clone(),
-        }
-    }
-}
-
-impl<F> Default for RequestMetrics<F>
-where
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
-{
-    fn default() -> Self {
-        let provider = NoopMeterProvider::new();
-        let meter = provider.meter("noop", None);
-        RequestMetrics::new(meter, None, None)
-    }
-}
+use crate::RouteFormatter;
 
 const ROUTE_KEY: Key = Key::from_static_str("route");
 const METHOD_KEY: Key = Key::from_static_str("method");
 const STATUS_KEY: Key = Key::from_static_str("status");
 
-impl<F> RequestMetrics<F>
-where
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
-{
+#[derive(Clone, Debug)]
+struct Metrics {
+    http_requests_total: Counter<u64>,
+    http_requests_duration_seconds: ValueRecorder<f64>,
+}
+
+impl Metrics {
     /// Create a new [`RequestMetrics`]
-    pub fn new(
-        meter: Meter,
-        should_render_metrics: Option<F>,
-        exporter: Option<PrometheusExporter>,
-    ) -> Self {
-        let exporter = exporter.unwrap_or_else(|| opentelemetry_prometheus::exporter().init());
+    fn new(meter: Meter) -> Self {
         let http_requests_total = meter
             .u64_counter("http_request_total")
             .with_description("HTTP requests per route")
@@ -106,13 +44,23 @@ where
             // .with_unit(Unit::new("seconds"))
             .init();
 
-        RequestMetrics {
-            exporter,
-            route_formatter: None,
-            should_render_metrics,
+        Metrics {
             http_requests_total,
             http_requests_duration_seconds,
         }
+    }
+}
+
+/// Builder for [RequestMetrics]
+#[derive(Clone, Debug, Default)]
+pub struct RequestMetricsBuilder {
+    route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
+}
+
+impl RequestMetricsBuilder {
+    /// Create a new `RequestMetricsBuilder`
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Add a route formatter to customize metrics match patterns
@@ -124,9 +72,163 @@ where
         self
     }
 
+    /// Build the `RequestMetrics` middleware
+    pub fn build(self, meter: Meter) -> RequestMetrics {
+        RequestMetrics {
+            route_formatter: self.route_formatter,
+            metrics: Arc::new(Metrics::new(meter)),
+        }
+    }
+}
+
+/// Request metrics tracking
+///
+/// # Examples
+///
+/// ```no_run
+/// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
+/// use actix_web_opentelemetry::{RequestMetricsBuilder, RequestTracing};
+/// use opentelemetry::global;
+///
+/// # async fn start_server() -> std::io::Result<()> {
+/// let meter = global::meter("actix_web");
+///
+/// // Optional predicate to determine which requests render the prometheus metrics
+/// let metrics_route = |req: &dev::ServiceRequest| {
+///     req.path() == "/metrics" && req.method() == http::Method::GET
+/// };
+///
+/// // Request metrics middleware
+/// let request_metrics = RequestMetricsBuilder::new().build(opentelemetry::global::meter("actix_web"));
+///
+/// #[cfg(feature = "metrics-prometheus")]
+/// let exporter = opentelemetry_prometheus::exporter().init();
+///
+/// // Run actix server, metrics are now available at http://localhost:8080/metrics
+/// HttpServer::new(move || {
+///         let app = App::new().wrap(RequestTracing::new()).wrap(request_metrics.clone());
+///
+///         #[cfg(feature = "metrics-prometheus")]
+///         let app = app.route("/metrics", web::get().to(request_metrics.route(exporter.clone())));
+///
+///         app
+///     })
+///     .bind("localhost:8080")?
+///     .run()
+///     .await
+/// # }
+/// ```
+#[derive(Clone, Debug)]
+pub struct RequestMetrics {
+    route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
+    metrics: Arc<Metrics>,
+}
+
+#[cfg(feature = "metrics-prometheus")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics-prometheus")))]
+impl RequestMetrics {
+    /// Build a route to serve Prometheus metrics
+    pub fn route(&self, exporter: PrometheusExporter) -> PrometheusMetricsHandler {
+        PrometheusMetricsHandler {
+            prometheus_exporter: exporter,
+        }
+    }
+}
+
+impl<S, B> dev::Transform<S, dev::ServiceRequest> for RequestMetrics
+where
+    S: dev::Service<
+        dev::ServiceRequest,
+        Response = dev::ServiceResponse<B>,
+        Error = actix_web::Error,
+    >,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = dev::ServiceResponse<B>;
+    type Error = actix_web::Error;
+    type Transform = RequestMetricsMiddleware<S>;
+    type InitError = ();
+    type Future = future::Ready<Result<Self::Transform, Self::InitError>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        let service = RequestMetricsMiddleware {
+            service,
+            metrics: self.metrics.clone(),
+            route_formatter: self.route_formatter.clone(),
+        };
+
+        future::ok(service)
+    }
+}
+
+/// Request metrics middleware
+#[allow(missing_debug_implementations)]
+pub struct RequestMetricsMiddleware<S> {
+    service: S,
+    metrics: Arc<Metrics>,
+    route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
+}
+
+impl<S, B> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S>
+where
+    S: dev::Service<
+        dev::ServiceRequest,
+        Response = dev::ServiceResponse<B>,
+        Error = actix_web::Error,
+    >,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = dev::ServiceResponse<B>;
+    type Error = actix_web::Error;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    dev::forward_ready!(service);
+
+    fn call(&self, req: dev::ServiceRequest) -> Self::Future {
+        let timer = SystemTime::now();
+        let request_metrics = self.metrics.clone();
+        let mut route = req.match_pattern().unwrap_or_else(|| "default".to_string());
+        if let Some(formatter) = &self.route_formatter {
+            route = formatter.format(&route);
+        }
+        let method = req.method().as_str().to_string();
+
+        Box::pin(self.service.call(req).map(move |res| {
+            // Ignore actix errors for metrics
+            if let Ok(res) = res {
+                let labels = vec![
+                    ROUTE_KEY.string(route),
+                    METHOD_KEY.string(method),
+                    STATUS_KEY.i64(res.status().as_u16() as i64),
+                ];
+                request_metrics.http_requests_total.add(1, &labels);
+                request_metrics.http_requests_duration_seconds.record(
+                    timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or_default(),
+                    &labels,
+                );
+
+                Ok(res)
+            } else {
+                res
+            }
+        }))
+    }
+}
+
+/// Prometheus request metrics service
+#[cfg(feature = "metrics-prometheus")]
+#[derive(Clone, Debug)]
+pub struct PrometheusMetricsHandler {
+    prometheus_exporter: PrometheusExporter,
+}
+
+#[cfg(feature = "metrics-prometheus")]
+impl PrometheusMetricsHandler {
     fn metrics(&self) -> String {
         let encoder = TextEncoder::new();
-        let metric_families = self.exporter.registry().gather();
+        let metric_families = self.prometheus_exporter.registry().gather();
         let mut buf = Vec::new();
         if let Err(err) = encoder.encode(&metric_families[..], &mut buf) {
             global::handle_error(MetricsError::Other(err.to_string()));
@@ -136,101 +238,15 @@ where
     }
 }
 
-impl<S, B, F> dev::Transform<S, dev::ServiceRequest> for RequestMetrics<F>
-where
-    S: dev::Service<
-        dev::ServiceRequest,
-        Response = dev::ServiceResponse<B>,
-        Error = actix_web::Error,
-    >,
-    S::Future: 'static,
-    B: 'static,
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
-{
-    type Response = dev::ServiceResponse<EitherBody<B, String>>;
-    type Error = actix_web::Error;
-    type Transform = RequestMetricsMiddleware<S, F>;
-    type InitError = ();
-    type Future = future::Ready<Result<Self::Transform, Self::InitError>>;
+#[cfg(feature = "metrics-prometheus")]
+impl dev::Handler<actix_web::HttpRequest> for PrometheusMetricsHandler {
+    type Output = Result<actix_web::HttpResponse<String>, actix_web::error::Error>;
+    type Future = LocalBoxFuture<'static, Self::Output>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
-        future::ok(RequestMetricsMiddleware {
-            service,
-            inner: Arc::new((*self).clone()),
-        })
-    }
-}
-
-/// Request metrics middleware
-#[allow(missing_debug_implementations)]
-pub struct RequestMetricsMiddleware<S, F>
-where
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone,
-{
-    service: S,
-    inner: Arc<RequestMetrics<F>>,
-}
-
-impl<S, B, F> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S, F>
-where
-    S: dev::Service<
-        dev::ServiceRequest,
-        Response = dev::ServiceResponse<B>,
-        Error = actix_web::Error,
-    >,
-    S::Future: 'static,
-    B: 'static,
-    F: Fn(&dev::ServiceRequest) -> bool + Send + Clone + 'static,
-{
-    type Response = dev::ServiceResponse<EitherBody<B, String>>;
-    type Error = actix_web::Error;
-    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    dev::forward_ready!(service);
-
-    fn call(&self, req: dev::ServiceRequest) -> Self::Future {
-        if self
-            .inner
-            .should_render_metrics
-            .as_ref()
-            .map(|f| f(&req))
-            .unwrap_or(false)
-        {
-            Box::pin(future::ok(
-                req.into_response(actix_web::HttpResponse::with_body(
-                    StatusCode::OK,
-                    self.inner.metrics(),
-                ))
-                .map_into_right_body(),
-            ))
-        } else {
-            let timer = SystemTime::now();
-            let request_metrics = self.inner.clone();
-            let mut route = req.match_pattern().unwrap_or_else(|| "default".to_string());
-            if let Some(formatter) = &self.inner.route_formatter {
-                route = formatter.format(&route);
-            }
-            let method = req.method().as_str().to_string();
-
-            Box::pin(self.service.call(req).map(move |res| {
-                // Ignore actix errors for metrics
-                if let Ok(res) = res {
-                    let labels = vec![
-                        ROUTE_KEY.string(route),
-                        METHOD_KEY.string(method),
-                        STATUS_KEY.i64(res.status().as_u16() as i64),
-                    ];
-                    request_metrics.http_requests_total.add(1, &labels);
-                    request_metrics.http_requests_duration_seconds.record(
-                        timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or_default(),
-                        &labels,
-                    );
-
-                    Ok(res.map_into_left_body())
-                } else {
-                    res.map(|res| res.map_into_left_body())
-                }
-            }))
-        }
+    fn call(&self, _req: actix_web::HttpRequest) -> Self::Future {
+        Box::pin(future::ok(actix_web::HttpResponse::with_body(
+            StatusCode::OK,
+            self.metrics(),
+        )))
     }
 }

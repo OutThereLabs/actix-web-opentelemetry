@@ -4,6 +4,13 @@ on: [pull_request]
 
 jobs:
   test:
+    strategy:
+      matrix:
+        args:
+          - --all-features
+          - --no-default-features
+          - --no-default-features --features=metrics
+          - --no-default-features --features=metrics-prometheus
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -15,6 +22,6 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          args: ${{ matrix.args }}
       - name: Run tests
-        run: cargo test --all-features --verbose
+        run: cargo test ${{ matrix.args }} --verbose

@@ -1,6 +1,6 @@
 [package]
 name = "actix-web-opentelemetry"
-version = "0.12.0"
+version = "0.13.0-alpha.1"
 authors = ["Julian Tescher <julian@outtherelabs.com>"]
 description = "OpenTelemetry integration for Actix Web apps"
 homepage = "https://github.com/OutThereLabs/actix-web-opentelemetry"
@@ -12,13 +12,14 @@ license = "MIT"
 edition = "2021"
 
 [features]
-metrics = ["opentelemetry/metrics", "opentelemetry-prometheus", "prometheus"]
+metrics = ["opentelemetry/metrics"]
+metrics-prometheus = ["metrics", "opentelemetry-prometheus", "prometheus"]
 sync-middleware = []
 
 [dependencies]
 actix-http = { version = "3.0", default-features = false, features = ["compress-zstd"] }
 actix-web = { version = "4.0", default-features = false, features = ["compress-zstd"] }
-awc = { version = "3.0.0-beta.21", optional = true, default-features = false, features = ["compress-zstd"] }
+awc = { version = "3.0", optional = true, default-features = false, features = ["compress-zstd"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 opentelemetry = { version = "0.17", default-features = false, features = ["trace", "rt-tokio-current-thread"] }
 opentelemetry-prometheus = { version = "0.10", optional = true }
@@ -28,7 +29,7 @@ serde = "1.0"
 
 [dev-dependencies]
 actix-web = { version = "4.0", features = ["macros"] }
-actix-web-opentelemetry = { path = ".", features = ["metrics", "sync-middleware", "awc"] }
+actix-web-opentelemetry = { path = ".", features = ["metrics-prometheus", "sync-middleware", "awc"] }
 opentelemetry-jaeger = { version = "0.16", features = ["rt-tokio-current-thread"] }
 
 [package.metadata.docs.rs]
