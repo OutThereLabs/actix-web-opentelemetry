@@ -8,15 +8,6 @@ use opentelemetry::{
 };
 use std::{sync::Arc, time::SystemTime};
 
-#[cfg(feature = "metrics-prometheus")]
-use actix_web::http::StatusCode;
-#[cfg(feature = "metrics-prometheus")]
-use opentelemetry::{global, metrics::MetricsError};
-#[cfg(feature = "metrics-prometheus")]
-use opentelemetry_prometheus::PrometheusExporter;
-#[cfg(feature = "metrics-prometheus")]
-use prometheus::{Encoder, TextEncoder};
-
 use crate::RouteFormatter;
 
 const ROUTE_KEY: Key = Key::from_static_str("route");
@@ -87,7 +78,7 @@ impl RequestMetricsBuilder {
 ///
 /// ```no_run
 /// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-/// use actix_web_opentelemetry::{RequestMetricsBuilder, RequestTracing};
+/// use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
 /// use opentelemetry::global;
 ///
 /// # async fn start_server() -> std::io::Result<()> {
@@ -104,7 +95,7 @@ impl RequestMetricsBuilder {
 ///         let app = App::new().wrap(RequestTracing::new()).wrap(request_metrics.clone());
 ///
 ///         #[cfg(feature = "metrics-prometheus")]
-///         let app = app.route("/metrics", web::get().to(request_metrics.route(exporter.clone())));
+///         let app = app.route("/metrics", web::get().to(PrometheusMetricsHandler::new(exporter.clone())));
 ///
 ///         app
 ///     })
@@ -117,17 +108,6 @@ impl RequestMetricsBuilder {
 pub struct RequestMetrics {
     route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
     metrics: Arc<Metrics>,
-}
-
-#[cfg(feature = "metrics-prometheus")]
-#[cfg_attr(docsrs, doc(cfg(feature = "metrics-prometheus")))]
-impl RequestMetrics {
-    /// Build a route to serve Prometheus metrics
-    pub fn route(&self, exporter: PrometheusExporter) -> PrometheusMetricsHandler {
-        PrometheusMetricsHandler {
-            prometheus_exporter: exporter,
-        }
-    }
 }
 
 impl<S, B> dev::Transform<S, dev::ServiceRequest> for RequestMetrics
@@ -212,36 +192,52 @@ where
     }
 }
 
-/// Prometheus request metrics service
 #[cfg(feature = "metrics-prometheus")]
-#[derive(Clone, Debug)]
-pub struct PrometheusMetricsHandler {
-    prometheus_exporter: PrometheusExporter,
-}
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics-prometheus")))]
+pub(crate) mod prometheus {
+    use actix_web::{dev, http::StatusCode};
+    use futures_util::future::{self, LocalBoxFuture};
+    use opentelemetry::{global, metrics::MetricsError};
+    use opentelemetry_prometheus::PrometheusExporter;
+    use prometheus::{Encoder, TextEncoder};
 
-#[cfg(feature = "metrics-prometheus")]
-impl PrometheusMetricsHandler {
-    fn metrics(&self) -> String {
-        let encoder = TextEncoder::new();
-        let metric_families = self.prometheus_exporter.registry().gather();
-        let mut buf = Vec::new();
-        if let Err(err) = encoder.encode(&metric_families[..], &mut buf) {
-            global::handle_error(MetricsError::Other(err.to_string()));
-        }
-
-        String::from_utf8(buf).unwrap_or_default()
+    /// Prometheus request metrics service
+    #[derive(Clone, Debug)]
+    pub struct PrometheusMetricsHandler {
+        prometheus_exporter: PrometheusExporter,
     }
-}
 
-#[cfg(feature = "metrics-prometheus")]
-impl dev::Handler<actix_web::HttpRequest> for PrometheusMetricsHandler {
-    type Output = Result<actix_web::HttpResponse<String>, actix_web::error::Error>;
-    type Future = LocalBoxFuture<'static, Self::Output>;
+    impl PrometheusMetricsHandler {
+        /// Build a route to serve Prometheus metrics
+        pub fn new(exporter: PrometheusExporter) -> Self {
+            Self {
+                prometheus_exporter: exporter,
+            }
+        }
+    }
 
-    fn call(&self, _req: actix_web::HttpRequest) -> Self::Future {
-        Box::pin(future::ok(actix_web::HttpResponse::with_body(
-            StatusCode::OK,
-            self.metrics(),
-        )))
+    impl PrometheusMetricsHandler {
+        fn metrics(&self) -> String {
+            let encoder = TextEncoder::new();
+            let metric_families = self.prometheus_exporter.registry().gather();
+            let mut buf = Vec::new();
+            if let Err(err) = encoder.encode(&metric_families[..], &mut buf) {
+                global::handle_error(MetricsError::Other(err.to_string()));
+            }
+
+            String::from_utf8(buf).unwrap_or_default()
+        }
+    }
+
+    impl dev::Handler<actix_web::HttpRequest> for PrometheusMetricsHandler {
+        type Output = Result<actix_web::HttpResponse<String>, actix_web::error::Error>;
+        type Future = LocalBoxFuture<'static, Self::Output>;
+
+        fn call(&self, _req: actix_web::HttpRequest) -> Self::Future {
+            Box::pin(future::ok(actix_web::HttpResponse::with_body(
+                StatusCode::OK,
+                self.metrics(),
+            )))
+        }
     }
 }
