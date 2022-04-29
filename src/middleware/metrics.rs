@@ -3,41 +3,54 @@
 use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
-    metrics::{Counter, Meter, ValueRecorder},
+    metrics::{Counter, Meter, Unit, UpDownCounter, ValueRecorder},
     Key,
 };
 use std::{sync::Arc, time::SystemTime};
 
 use crate::RouteFormatter;
 
-const ROUTE_KEY: Key = Key::from_static_str("route");
-const METHOD_KEY: Key = Key::from_static_str("method");
-const STATUS_KEY: Key = Key::from_static_str("status");
+// Follows the experimental semantic conventions for HTTP metrics:
+// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/http-metrics.md
+const HTTP_METHOD: Key = Key::from_static_str("http.method");
+const HTTP_STATUS_CODE: Key = Key::from_static_str("http.status_code");
+const HTTP_TARGET: Key = Key::from_static_str("http.target");
+
+const HTTP_SERVER_ACTIVE_REQUESTS: &str = "http.server.active_requests";
+const HTTP_SERVER_TOTAL_REQUESTS: &str = "http.server.total_requests";
+
+const HTTP_SERVER_DURATION: &str = "http.server.duration";
 
 #[derive(Clone, Debug)]
 struct Metrics {
-    http_requests_total: Counter<u64>,
-    http_requests_duration_seconds: ValueRecorder<f64>,
+    http_server_active_requests: UpDownCounter<i64>,
+    http_server_total_requests: Counter<u64>,
+    http_server_duration: ValueRecorder<f64>,
 }
 
 impl Metrics {
     /// Create a new [`RequestMetrics`]
     fn new(meter: Meter) -> Self {
-        let http_requests_total = meter
-            .u64_counter("http_request_total")
+        let http_server_active_requests = meter
+            .i64_up_down_counter(HTTP_SERVER_ACTIVE_REQUESTS)
+            .with_description("HTTP concurrent in-flight requests per route")
+            .init();
+
+        let http_server_total_requests = meter
+            .u64_counter(HTTP_SERVER_TOTAL_REQUESTS)
             .with_description("HTTP requests per route")
             .init();
 
-        let http_requests_duration_seconds = meter
-            .f64_value_recorder("http_request_duration_seconds")
-            .with_description("HTTP request duration per route")
-            // TODO: https://github.com/open-telemetry/opentelemetry-rust/issues/276
-            // .with_unit(Unit::new("seconds"))
+        let http_server_duration = meter
+            .f64_value_recorder(HTTP_SERVER_DURATION)
+            .with_description("HTTP inbound request duration per route")
+            .with_unit(Unit::new("ms"))
             .init();
 
         Metrics {
-            http_requests_total,
-            http_requests_duration_seconds,
+            http_server_active_requests,
+            http_server_total_requests,
+            http_server_duration,
         }
     }
 }
@@ -170,17 +183,28 @@ where
         }
         let method = req.method().as_str().to_string();
 
+        let http_server_active_requests = self.metrics.http_server_active_requests.bind(&[
+            HTTP_TARGET.string(route.clone()),
+            HTTP_METHOD.string(method.clone()),
+        ]);
+        http_server_active_requests.add(1);
+
         Box::pin(self.service.call(req).map(move |res| {
+            http_server_active_requests.add(-1);
+
             // Ignore actix errors for metrics
             if let Ok(res) = res {
                 let labels = vec![
-                    ROUTE_KEY.string(route),
-                    METHOD_KEY.string(method),
-                    STATUS_KEY.i64(res.status().as_u16() as i64),
+                    HTTP_TARGET.string(route),
+                    HTTP_METHOD.string(method),
+                    HTTP_STATUS_CODE.string(res.status().as_str().to_owned()),
                 ];
-                request_metrics.http_requests_total.add(1, &labels);
-                request_metrics.http_requests_duration_seconds.record(
-                    timer.elapsed().map(|t| t.as_secs_f64()).unwrap_or_default(),
+                request_metrics.http_server_total_requests.add(1, &labels);
+                request_metrics.http_server_duration.record(
+                    timer
+                        .elapsed()
+                        .map(|t| t.as_secs_f64() * 1000.0)
+                        .unwrap_or_default(),
                     &labels,
                 );
 
