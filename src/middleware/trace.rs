@@ -123,6 +123,7 @@ where
     }
 }
 
+/// Request tracing middleware
 #[derive(Debug)]
 pub struct RequestTracingMiddleware<S> {
     tracer: global::BoxedTracer,

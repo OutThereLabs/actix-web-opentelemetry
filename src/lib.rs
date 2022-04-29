@@ -142,4 +142,7 @@ pub use middleware::metrics::prometheus::PrometheusMetricsHandler;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub use middleware::metrics::{RequestMetrics, RequestMetricsBuilder, RequestMetricsMiddleware};
-pub use {middleware::route_formatter::RouteFormatter, middleware::trace::RequestTracing};
+pub use {
+    middleware::route_formatter::RouteFormatter,
+    middleware::trace::{RequestTracing, RequestTracingMiddleware},
+};
