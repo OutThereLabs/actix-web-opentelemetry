@@ -11,6 +11,7 @@ jobs:
           - --no-default-features
           - --no-default-features --features=metrics
           - --no-default-features --features=metrics-prometheus
+          - --no-default-features --features=sync-middleware
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2

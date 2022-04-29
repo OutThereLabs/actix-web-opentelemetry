@@ -93,13 +93,8 @@ impl RequestMetricsBuilder {
 /// # async fn start_server() -> std::io::Result<()> {
 /// let meter = global::meter("actix_web");
 ///
-/// // Optional predicate to determine which requests render the prometheus metrics
-/// let metrics_route = |req: &dev::ServiceRequest| {
-///     req.path() == "/metrics" && req.method() == http::Method::GET
-/// };
-///
 /// // Request metrics middleware
-/// let request_metrics = RequestMetricsBuilder::new().build(opentelemetry::global::meter("actix_web"));
+/// let request_metrics = RequestMetricsBuilder::new().build(meter);
 ///
 /// #[cfg(feature = "metrics-prometheus")]
 /// let exporter = opentelemetry_prometheus::exporter().init();
