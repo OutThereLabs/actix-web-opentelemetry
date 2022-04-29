@@ -2,23 +2,17 @@
 
 use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
-use opentelemetry::{
-    metrics::{Counter, Meter, Unit, UpDownCounter, ValueRecorder},
-    Key,
-};
+use opentelemetry::metrics::{Counter, Meter, Unit, UpDownCounter, ValueRecorder};
 use std::{sync::Arc, time::SystemTime};
 
+use crate::util::trace_attributes_from_request;
 use crate::RouteFormatter;
 
 // Follows the experimental semantic conventions for HTTP metrics:
 // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/http-metrics.md
-const HTTP_METHOD: Key = Key::from_static_str("http.method");
-const HTTP_STATUS_CODE: Key = Key::from_static_str("http.status_code");
-const HTTP_TARGET: Key = Key::from_static_str("http.target");
-
+use opentelemetry_semantic_conventions::trace::HTTP_STATUS_CODE;
 const HTTP_SERVER_ACTIVE_REQUESTS: &str = "http.server.active_requests";
 const HTTP_SERVER_TOTAL_REQUESTS: &str = "http.server.total_requests";
-
 const HTTP_SERVER_DURATION: &str = "http.server.duration";
 
 #[derive(Clone, Debug)]
@@ -176,36 +170,36 @@ where
 
     fn call(&self, req: dev::ServiceRequest) -> Self::Future {
         let timer = SystemTime::now();
-        let request_metrics = self.metrics.clone();
-        let mut route = req.match_pattern().unwrap_or_else(|| "default".to_string());
-        if let Some(formatter) = &self.route_formatter {
-            route = formatter.format(&route);
-        }
-        let method = req.method().as_str().to_string();
 
-        let http_server_active_requests = self.metrics.http_server_active_requests.bind(&[
-            HTTP_TARGET.string(route.clone()),
-            HTTP_METHOD.string(method.clone()),
-        ]);
+        let mut http_route = req.match_pattern().unwrap_or_else(|| "default".to_string());
+        if let Some(formatter) = &self.route_formatter {
+            http_route = formatter.format(&http_route);
+        }
+
+        let mut attributes = trace_attributes_from_request(&req, &http_route);
+
+        let http_server_active_requests =
+            self.metrics.http_server_active_requests.bind(&attributes);
         http_server_active_requests.add(1);
 
+        let request_metrics = self.metrics.clone();
         Box::pin(self.service.call(req).map(move |res| {
             http_server_active_requests.add(-1);
 
             // Ignore actix errors for metrics
             if let Ok(res) = res {
-                let labels = vec![
-                    HTTP_TARGET.string(route),
-                    HTTP_METHOD.string(method),
-                    HTTP_STATUS_CODE.string(res.status().as_str().to_owned()),
-                ];
-                request_metrics.http_server_total_requests.add(1, &labels);
+                attributes.push(HTTP_STATUS_CODE.string(res.status().as_str().to_owned()));
+
+                request_metrics
+                    .http_server_total_requests
+                    .add(1, &attributes);
+
                 request_metrics.http_server_duration.record(
                     timer
                         .elapsed()
                         .map(|t| t.as_secs_f64() * 1000.0)
                         .unwrap_or_default(),
-                    &labels,
+                    &attributes,
                 );
 
                 Ok(res)
