@@ -77,31 +77,31 @@
 //!
 //! ```no_run
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-//! # #[cfg(feature = "metrics")]
-//! use actix_web_opentelemetry::RequestMetrics;
+//! #[cfg(feature = "metrics-prometheus")]
+//! use actix_web_opentelemetry::{RequestMetricsBuilder, RequestTracing};
 //! use opentelemetry::global;
 //!
-//! # #[cfg(feature = "metrics")]
+//! #[cfg(feature = "metrics-prometheus")]
 //! #[actix_web::main]
 //! async fn main() -> std::io::Result<()> {
 //!     let exporter = opentelemetry_prometheus::exporter().init();
 //!     let meter = global::meter("actix_web");
 //!
-//!     // Optional predicate to determine which requests render the prometheus metrics
-//!     let metrics_route = |req: &dev::ServiceRequest| {
-//!         req.path() == "/metrics" && req.method() == http::Method::GET
-//!     };
-//!
 //!     // Request metrics middleware
-//!     let request_metrics = RequestMetrics::new(meter, Some(metrics_route), Some(exporter));
+//!     let request_metrics = RequestMetricsBuilder::new().build(meter);
 //!
 //!     // Run actix server, metrics are now available at http://localhost:8080/metrics
-//!     HttpServer::new(move || App::new().wrap(request_metrics.clone()))
+//!     HttpServer::new(move || {
+//!         App::new()
+//!             .wrap(RequestTracing::new())
+//!             .wrap(request_metrics.clone())
+//!             .route("/metrics", web::get().to(request_metrics.route(exporter.clone())))
+//!         })
 //!         .bind("localhost:8080")?
 //!         .run()
 //!         .await
 //! }
-//! # #[cfg(not(feature = "metrics"))]
+//! #[cfg(not(feature = "metrics-prometheus"))]
 //! # fn main() {}
 //! ```
 //!
@@ -136,7 +136,10 @@ pub(crate) mod util;
 #[cfg_attr(docsrs, doc(cfg(feature = "awc")))]
 pub use client::{ClientExt, InstrumentedClientRequest};
 
+#[cfg(feature = "metrics-prometheus")]
+#[cfg_attr(docsrs, doc(feature = "metrics-prometheus"))]
+pub use middleware::metrics::PrometheusMetricsHandler;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
-pub use middleware::metrics::{RequestMetrics, RequestMetricsMiddleware};
+pub use middleware::metrics::{RequestMetrics, RequestMetricsBuilder, RequestMetricsMiddleware};
 pub use {middleware::route_formatter::RouteFormatter, middleware::trace::RequestTracing};
