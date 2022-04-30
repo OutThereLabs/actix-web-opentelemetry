@@ -85,31 +85,35 @@ impl RequestMetricsBuilder {
 ///
 /// ```no_run
 /// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-/// use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
+/// use actix_web_opentelemetry::{
+///     PrometheusMetricsHandler,
+///     RequestMetricsBuilder,
+///     RequestTracing,
+/// };
 /// use opentelemetry::global;
 ///
-/// # async fn start_server() -> std::io::Result<()> {
-/// let meter = global::meter("actix_web");
+/// # #[cfg(feature = "metrics-prometheus")]
+/// #[actix_web::main]
+/// async fn main() -> std::io::Result<()> {
+///     // Request metrics middleware
+///     let meter = global::meter("actix_web");
+///     let request_metrics = RequestMetricsBuilder::new().build(meter);
 ///
-/// // Request metrics middleware
-/// let request_metrics = RequestMetricsBuilder::new().build(meter);
+///     // Prometheus request metrics handler
+///     let exporter = opentelemetry_prometheus::exporter().init();
+///     let metrics_handler = PrometheusMetricsHandler::new(exporter);
 ///
-/// #[cfg(feature = "metrics-prometheus")]
-/// let exporter = opentelemetry_prometheus::exporter().init();
-///
-/// // Run actix server, metrics are now available at http://localhost:8080/metrics
-/// HttpServer::new(move || {
-///         let app = App::new().wrap(RequestTracing::new()).wrap(request_metrics.clone());
-///
-///         #[cfg(feature = "metrics-prometheus")]
-///         let app = app.route("/metrics", web::get().to(PrometheusMetricsHandler::new(exporter.clone())));
-///
-///         app
+///     // Run actix server, metrics are now available at http://localhost:8080/metrics
+///     HttpServer::new(move || {
+///         App::new()
+///             .wrap(RequestTracing::new())
+///             .wrap(request_metrics.clone())
+///             .route("/metrics", web::get().to(metrics_handler.clone()))
 ///     })
 ///     .bind("localhost:8080")?
 ///     .run()
 ///     .await
-/// # }
+/// }
 /// ```
 #[derive(Clone, Debug)]
 pub struct RequestMetrics {

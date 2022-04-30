@@ -77,11 +77,11 @@
 //!
 //! ```no_run
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
-//! #[cfg(feature = "metrics-prometheus")]
+//! # #[cfg(feature = "metrics-prometheus")]
 //! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
 //! use opentelemetry::global;
 //!
-//! #[cfg(feature = "metrics-prometheus")]
+//! # #[cfg(feature = "metrics-prometheus")]
 //! #[actix_web::main]
 //! async fn main() -> std::io::Result<()> {
 //!     let exporter = opentelemetry_prometheus::exporter().init();
@@ -101,7 +101,7 @@
 //!         .run()
 //!         .await
 //! }
-//! #[cfg(not(feature = "metrics-prometheus"))]
+//! # #[cfg(not(feature = "metrics-prometheus"))]
 //! # fn main() {}
 //! ```
 //!
@@ -112,20 +112,20 @@
 //!
 //! ```toml
 //! [dependencies]
-//! # if exporting to jaeger, use the `tokio` feature.
+//! ## if exporting to jaeger, use the `tokio` feature.
 //! opentelemetry-jaeger = { version = "..", features = ["rt-tokio-current-thread"] }
 //!
-//! # if exporting to zipkin, use the `tokio` based `reqwest-client` feature.
+//! ## if exporting to zipkin, use the `tokio` based `reqwest-client` feature.
 //! opentelemetry-zipkin = { version = "..", features = ["reqwest-client"], default-features = false }
 //!
-//! # ... ensure the same same for any other exporters
+//! ## ... ensure the same same for any other exporters
 //! ```
 //!
 //! [`actix-web`]: https://crates.io/crates/actix-web
 //! [`tokio`]: https://crates.io/crates/tokio
 #![deny(missing_docs, unreachable_pub, missing_debug_implementations)]
 #![cfg_attr(test, deny(warnings))]
-#![cfg_attr(docsrs, feature(doc_cfg), deny(broken_intra_doc_links))]
+#![cfg_attr(docsrs, feature(doc_cfg), deny(rustdoc::broken_intra_doc_links))]
 
 #[cfg(feature = "awc")]
 mod client;
@@ -137,7 +137,7 @@ pub(crate) mod util;
 pub use client::{ClientExt, InstrumentedClientRequest};
 
 #[cfg(feature = "metrics-prometheus")]
-#[cfg_attr(docsrs, doc(feature = "metrics-prometheus"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics-prometheus")))]
 pub use middleware::metrics::prometheus::PrometheusMetricsHandler;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]

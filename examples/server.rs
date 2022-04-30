@@ -18,26 +18,24 @@ async fn main() -> io::Result<()> {
         .install_batch(TokioCurrentThread)
         .expect("pipeline install error");
 
-    let request_metrics = RequestMetricsBuilder::new();
+    let meter = opentelemetry::global::meter("actix_web");
+    let request_metrics = RequestMetricsBuilder::new().build(meter);
 
-    // Start a new prometheus metrics pipeline if --features metrics is used
+    // Start a new prometheus metrics pipeline if --features metrics-prometheus is used
     #[cfg(feature = "metrics-prometheus")]
-    let exporter = opentelemetry_prometheus::exporter().init();
-
-    let request_metrics = request_metrics.build(opentelemetry::global::meter("actix_web"));
+    let metrics_handler = {
+        let exporter = opentelemetry_prometheus::exporter().init();
+        PrometheusMetricsHandler::new(exporter)
+    };
 
     HttpServer::new(move || {
         let app = App::new()
             .wrap(RequestTracing::new())
+            .wrap(request_metrics.clone())
             .service(web::resource("/users/{id}").to(index));
 
-        let app = app.wrap(request_metrics.clone());
-
         #[cfg(feature = "metrics-prometheus")]
-        let app = app.route(
-            "/metrics",
-            web::get().to(PrometheusMetricsHandler::new(exporter.clone())),
-        );
+        let app = app.route("/metrics", web::get().to(metrics_handler.clone()));
 
         app
     })
