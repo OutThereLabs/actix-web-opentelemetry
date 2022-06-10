@@ -5,7 +5,7 @@ use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::metrics::{Counter, Meter, Unit, UpDownCounter, ValueRecorder};
 use std::{sync::Arc, time::SystemTime};
 
-use crate::util::trace_attributes_from_request;
+use crate::util::metrics_attributes_from_request;
 use crate::RouteFormatter;
 
 // Follows the experimental semantic conventions for HTTP metrics:
@@ -175,12 +175,12 @@ where
     fn call(&self, req: dev::ServiceRequest) -> Self::Future {
         let timer = SystemTime::now();
 
-        let mut http_route = req.match_pattern().unwrap_or_else(|| "default".to_string());
+        let mut http_target = req.match_pattern().unwrap_or_else(|| "default".to_string());
         if let Some(formatter) = &self.route_formatter {
-            http_route = formatter.format(&http_route);
+            http_target = formatter.format(&http_target);
         }
 
-        let mut attributes = trace_attributes_from_request(&req, &http_route);
+        let mut attributes = metrics_attributes_from_request(&req, &http_target);
 
         let http_server_active_requests =
             self.metrics.http_server_active_requests.bind(&attributes);
