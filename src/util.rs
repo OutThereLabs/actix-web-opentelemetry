@@ -87,7 +87,48 @@ pub(super) fn trace_attributes_from_request(
     if let Some(remote) = remote_addr {
         attributes.push(HTTP_CLIENT_IP.string(remote.to_string()))
     }
-    if let Some(peer_addr) = req.peer_addr().map(|socket| socket.to_string()) {
+    if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
+        if Some(peer_addr.as_str()) != remote_addr {
+            // Client is going through a proxy
+            attributes.push(NET_PEER_IP.string(peer_addr))
+        }
+    }
+
+    attributes
+}
+
+#[cfg(feature = "metrics")]
+pub(super) fn metrics_attributes_from_request(
+    req: &ServiceRequest,
+    http_target: &str,
+) -> Vec<KeyValue> {
+    let conn_info = req.connection_info();
+
+    let mut attributes = Vec::with_capacity(11);
+    attributes.push(HTTP_METHOD.string(http_method_str(req.method())));
+    attributes.push(HTTP_FLAVOR.string(http_flavor(req.version())));
+    attributes.push(HTTP_HOST.string(conn_info.host().to_string()));
+    attributes.push(HTTP_TARGET.string(http_target.to_owned()));
+    attributes.push(HTTP_SCHEME.string(http_scheme(conn_info.scheme())));
+
+    let server_name = req.app_config().host();
+    if server_name != conn_info.host() {
+        attributes.push(HTTP_SERVER_NAME.string(server_name.to_string()));
+    }
+    if let Some(port) = conn_info
+        .host()
+        .split_terminator(':')
+        .nth(1)
+        .and_then(|port| port.parse().ok())
+    {
+        attributes.push(NET_HOST_PORT.i64(port))
+    }
+
+    let remote_addr = conn_info.realip_remote_addr();
+    if let Some(remote) = remote_addr {
+        attributes.push(HTTP_CLIENT_IP.string(remote.to_string()))
+    }
+    if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
         if Some(peer_addr.as_str()) != remote_addr {
             // Client is going through a proxy
             attributes.push(NET_PEER_IP.string(peer_addr))
