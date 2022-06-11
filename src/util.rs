@@ -125,9 +125,6 @@ pub(super) fn metrics_attributes_from_request(
     }
 
     let remote_addr = conn_info.realip_remote_addr();
-    if let Some(remote) = remote_addr {
-        attributes.push(HTTP_CLIENT_IP.string(remote.to_string()))
-    }
     if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
         if Some(peer_addr.as_str()) != remote_addr {
             // Client is going through a proxy
