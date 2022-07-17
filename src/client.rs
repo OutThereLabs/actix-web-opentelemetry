@@ -20,16 +20,46 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
 };
 use serde::Serialize;
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::mem;
 use std::str::FromStr;
 
 /// A wrapper for the actix-web [awc::ClientRequest].
-#[derive(Debug)]
 pub struct InstrumentedClientRequest {
     cx: Context,
     attrs: Vec<KeyValue>,
+    span_namer: fn(&ClientRequest) -> String,
     request: ClientRequest,
+}
+
+impl Debug for InstrumentedClientRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let span_namer = fmt::Pointer::fmt(&(self.span_namer as usize as *const ()), f);
+        f.debug_struct("InstrumentedClientRequest")
+            .field("cx", &self.cx)
+            .field("attrs", &self.attrs)
+            .field("span_namer", &span_namer)
+            .field("request", &self.request)
+            .finish()
+    }
+}
+
+fn default_span_namer(request: &ClientRequest) -> String {
+    format!(
+        "{} {}{}{}",
+        request.get_method(),
+        request
+            .get_uri()
+            .scheme()
+            .map(|s| format!("{}://", s.as_str()))
+            .unwrap_or_else(String::new),
+        request
+            .get_uri()
+            .authority()
+            .map(|s| s.as_str())
+            .unwrap_or(""),
+        request.get_uri().path()
+    )
 }
 
 /// OpenTelemetry extensions for actix-web's [awc::Client].
@@ -87,6 +117,7 @@ impl ClientExt for ClientRequest {
         InstrumentedClientRequest {
             cx,
             attrs: Vec::new(),
+            span_namer: default_span_namer,
             request: self,
         }
     }
@@ -154,21 +185,7 @@ impl InstrumentedClientRequest {
         }
 
         let span = tracer
-            .span_builder(format!(
-                "{} {}{}{}",
-                self.request.get_method(),
-                self.request
-                    .get_uri()
-                    .scheme()
-                    .map(|s| format!("{}://", s.as_str()))
-                    .unwrap_or_else(String::new),
-                self.request
-                    .get_uri()
-                    .authority()
-                    .map(|s| s.as_str())
-                    .unwrap_or(""),
-                self.request.get_uri().path()
-            ))
+            .span_builder((self.span_namer)(&self.request))
             .with_kind(SpanKind::Client)
             .with_attributes(mem::take(&mut self.attrs))
             .start_with_context(&tracer, &self.cx);
@@ -212,6 +229,33 @@ impl InstrumentedClientRequest {
         attrs: impl IntoIterator<Item = KeyValue>,
     ) -> InstrumentedClientRequest {
         self.attrs.extend(&mut attrs.into_iter());
+        self
+    }
+
+    /// Customise the Span Name, for example to reduce cardinality
+    /// 
+    /// Example:
+    /// ```
+    /// use actix_web_opentelemetry::ClientExt;
+    /// use awc::{Client, error::SendRequestError};
+    ///
+    /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
+    ///     let res = client.get("http://localhost:8080")
+    ///         // Add `trace_request` before `send` to any awc request to add instrumentation
+    ///         .trace_request()
+    ///         .with_span_namer(|r| format!("HTTP {}", r.get_method()))
+    ///         .send()
+    ///         .await?;
+    ///
+    ///     println!("Response: {:?}", res);
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_span_namer(
+        mut self,
+        span_namer: fn(&ClientRequest) -> String
+    ) -> InstrumentedClientRequest {
+        self.span_namer = span_namer;
         self
     }
 }
