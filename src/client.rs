@@ -46,19 +46,9 @@ impl Debug for InstrumentedClientRequest {
 
 fn default_span_namer(request: &ClientRequest) -> String {
     format!(
-        "{} {}{}{}",
+        "{} {}",
         request.get_method(),
-        request
-            .get_uri()
-            .scheme()
-            .map(|s| format!("{}://", s.as_str()))
-            .unwrap_or_else(String::new),
-        request
-            .get_uri()
-            .authority()
-            .map(|s| s.as_str())
-            .unwrap_or(""),
-        request.get_uri().path()
+        request.get_uri().host().unwrap_or_default()
     )
 }
 
@@ -233,7 +223,7 @@ impl InstrumentedClientRequest {
     }
 
     /// Customise the Span Name, for example to reduce cardinality
-    /// 
+    ///
     /// Example:
     /// ```
     /// use actix_web_opentelemetry::ClientExt;
@@ -253,7 +243,7 @@ impl InstrumentedClientRequest {
     /// ```
     pub fn with_span_namer(
         mut self,
-        span_namer: fn(&ClientRequest) -> String
+        span_namer: fn(&ClientRequest) -> String,
     ) -> InstrumentedClientRequest {
         self.span_namer = span_namer;
         self
