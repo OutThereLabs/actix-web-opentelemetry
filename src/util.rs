@@ -11,6 +11,36 @@ use opentelemetry_semantic_conventions::trace::{
     HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
 };
 
+#[cfg(feature = "awc")]
+#[inline]
+pub(super) fn http_url(uri: &actix_web::http::Uri) -> String {
+    let mut url = String::new();
+    if let Some(scheme) = uri.scheme() {
+        url.push_str(scheme.as_str());
+        url.push_str("://")
+    }
+
+    if let Some(host) = uri.host() {
+        url.push_str(host);
+    }
+
+    if let Some(port) = uri.port_u16() {
+        if port != 80 && port != 443 {
+            url.push(':');
+            url.push_str(&format!("{}", port));
+        }
+    }
+
+    url.push_str(uri.path());
+
+    if let Some(query) = uri.query() {
+        url.push('?');
+        url.push_str(query);
+    }
+
+    url
+}
+
 #[inline]
 pub(super) fn http_method_str(method: &Method) -> Cow<'static, str> {
     match method {
@@ -30,11 +60,11 @@ pub(super) fn http_method_str(method: &Method) -> Cow<'static, str> {
 #[inline]
 pub(super) fn http_flavor(version: Version) -> Cow<'static, str> {
     match version {
-        Version::HTTP_09 => "0.9".into(),
-        Version::HTTP_10 => "1.0".into(),
-        Version::HTTP_11 => "1.1".into(),
-        Version::HTTP_2 => "2.0".into(),
-        Version::HTTP_3 => "3.0".into(),
+        Version::HTTP_09 => "HTTP/0.9".into(),
+        Version::HTTP_10 => "HTTP/1.0".into(),
+        Version::HTTP_11 => "HTTP/1.1".into(),
+        Version::HTTP_2 => "HTTP/2".into(),
+        Version::HTTP_3 => "HTTP/3".into(),
         other => format!("{:?}", other).into(),
     }
 }
@@ -71,7 +101,9 @@ pub(super) fn trace_attributes_from_request(
         .nth(1)
         .and_then(|port| port.parse().ok())
     {
-        attributes.push(NET_HOST_PORT.i64(port))
+        if port != 80 && port != 443 {
+            attributes.push(NET_HOST_PORT.i64(port))
+        }
     }
     if let Some(path) = req.uri().path_and_query() {
         attributes.push(HTTP_TARGET.string(path.as_str().to_string()))

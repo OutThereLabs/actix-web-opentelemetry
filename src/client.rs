@@ -1,4 +1,4 @@
-use crate::util::http_method_str;
+use crate::util::{http_method_str, http_url};
 use actix_http::{encoding::Decoder, BoxedPayloadStream, Error, Payload};
 use actix_web::{
     body::MessageBody,
@@ -8,16 +8,21 @@ use actix_web::{
     },
     web::Bytes,
 };
-use awc::{error::SendRequestError, ClientRequest, ClientResponse};
+use awc::{
+    error::SendRequestError,
+    http::header::{CONTENT_LENGTH, USER_AGENT},
+    ClientRequest, ClientResponse,
+};
 use futures_util::{future::TryFutureExt as _, Future, Stream};
 use opentelemetry::{
     global,
     propagation::Injector,
-    trace::{SpanKind, StatusCode, TraceContextExt, Tracer},
+    trace::{SpanKind, StatusCode, TraceContextExt, Tracer, TracerProvider},
     Context, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::{
-    HTTP_FLAVOR, HTTP_METHOD, HTTP_STATUS_CODE, HTTP_URL, NET_PEER_IP,
+    HTTP_FLAVOR, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_STATUS_CODE, HTTP_URL,
+    HTTP_USER_AGENT, NET_PEER_IP, NET_PEER_NAME, NET_PEER_PORT,
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
@@ -157,21 +162,51 @@ impl InstrumentedClientRequest {
         F: FnOnce(ClientRequest) -> R,
         R: Future<Output = AwcResult>,
     {
-        let tracer = global::tracer("actix-client");
+        let tracer = global::tracer_provider().versioned_tracer(
+            "actix-web-opentelemetry",
+            Some(env!("CARGO_PKG_VERSION")),
+            None,
+        );
         self.attrs.extend(
             &mut [
                 KeyValue::new(HTTP_METHOD, http_method_str(self.request.get_method())),
-                KeyValue::new(HTTP_URL, self.request.get_uri().to_string()),
-                KeyValue::new(
-                    HTTP_FLAVOR,
-                    format!("{:?}", self.request.get_version()).replace("HTTP/", ""),
-                ),
+                KeyValue::new(HTTP_URL, http_url(self.request.get_uri())),
+                KeyValue::new(HTTP_FLAVOR, format!("{:?}", self.request.get_version())),
             ]
             .into_iter(),
         );
+        if let Some(user_agent) = self
+            .request
+            .headers()
+            .get(USER_AGENT)
+            .and_then(|len| len.to_str().ok())
+        {
+            self.attrs
+                .push(KeyValue::new(HTTP_USER_AGENT, user_agent.to_string()))
+        }
+
+        if let Some(content_length) = self.request.headers().get(CONTENT_LENGTH).and_then(|len| {
+            len.to_str()
+                .ok()
+                .and_then(|str_len| str_len.parse::<i64>().ok())
+        }) {
+            self.attrs
+                .push(KeyValue::new(HTTP_REQUEST_CONTENT_LENGTH, content_length))
+        }
+
+        if let Some(host) = self.request.get_uri().host() {
+            self.attrs
+                .push(KeyValue::new(NET_PEER_NAME, host.to_string()));
+        }
 
         if let Some(peer_addr) = self.request.get_peer_addr() {
             self.attrs.push(NET_PEER_IP.string(peer_addr.to_string()));
+        }
+
+        if let Some(peer_port) = self.request.get_uri().port_u16() {
+            if peer_port != 80 && peer_port != 443 {
+                self.attrs.push(NET_PEER_PORT.i64(peer_port.into()));
+            }
         }
 
         let span = tracer
