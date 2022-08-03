@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.13.0-alpha.1](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.12.0..v0.13.0-alpha.1)
+
+### Added
+
+* Export RequestTracingMiddleware (#106)
+* Allow customisation of client span names (#111)
+
+### Changed
+
+* Update semantic conventions for client and server traces (#113)
+* Reduce default span namer cardinality (#112)
+* Remove http.client_ip from metrics (#110)
+* Use proper metric semantic conventions (#109)
+* Use Otel semantic conventions for metrics (#105)
+* Simplify PrometheusMetricsHandler (#104)
+* Refactor to make Prometheus optional (#103)
+
 ## [v0.12.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.11.0-beta.8..v0.12.0)
 
 ### Changed
