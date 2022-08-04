@@ -11,7 +11,7 @@ use opentelemetry::{
     propagation::Extractor,
     trace::{
         FutureExt as OtelFutureExt, SpanKind, StatusCode, TraceContextExt, Tracer, TracerProvider,
-    },
+    }, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::HTTP_STATUS_CODE;
 
@@ -50,6 +50,7 @@ use crate::util::trace_attributes_from_request;
 #[derive(Default, Debug)]
 pub struct RequestTracing {
     route_formatter: Option<Rc<dyn RouteFormatter + 'static>>,
+    default_attributes: Option<Vec<KeyValue>>,
 }
 
 impl RequestTracing {
@@ -94,6 +95,41 @@ impl RequestTracing {
     pub fn with_formatter<T: RouteFormatter + 'static>(route_formatter: T) -> Self {
         RequestTracing {
             route_formatter: Some(Rc::new(route_formatter)),
+            ..RequestTracing::default()
+        }
+    }
+
+    /// Actix web middleware to trace each request in an OpenTelemetry span with
+    /// default attributes included in each span.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use actix_web::{web, App, HttpServer};
+    /// use actix_web_opentelemetry::{RequestTracing};
+    /// use opentelemetry::KeyValue;
+    ///
+    /// # #[actix_web::main]
+    /// # async fn main() -> std::io::Result<()> {
+    ///
+    /// HttpServer::new(move || {
+    ///     let default_attributes = vec![
+    ///         KeyValue::new("span.type", "web"),
+    ///         KeyValue::new("version", "1.2.3"),
+    ///     ];
+    ///     App::new()
+    ///         .wrap(RequestTracing::with_default_attributes(default_attributes))
+    ///         .service(web::resource("/users/{id}").to(|| async { "ok" }))
+    /// })
+    /// .bind("127.0.0.1:8080")?
+    /// .run()
+    /// .await
+    /// # }
+    /// ```
+    pub fn with_default_attributes(default_attributes: Vec<KeyValue>) -> Self {
+        RequestTracing {
+            default_attributes: Some(default_attributes),
+            ..RequestTracing::default()
         }
     }
 }
@@ -119,6 +155,7 @@ where
             ),
             service,
             self.route_formatter.clone(),
+            self.default_attributes.clone(),
         ))
     }
 }
@@ -129,6 +166,7 @@ pub struct RequestTracingMiddleware<S> {
     tracer: global::BoxedTracer,
     service: S,
     route_formatter: Option<Rc<dyn RouteFormatter>>,
+    default_attributes: Option<Vec<KeyValue>>,
 }
 
 impl<S, B> RequestTracingMiddleware<S>
@@ -141,11 +179,13 @@ where
         tracer: global::BoxedTracer,
         service: S,
         route_formatter: Option<Rc<dyn RouteFormatter>>,
+        default_attributes: Option<Vec<KeyValue>>,
     ) -> Self {
         RequestTracingMiddleware {
             tracer,
             service,
             route_formatter,
+            default_attributes,
         }
     }
 }
@@ -178,7 +218,13 @@ where
 
         let mut builder = self.tracer.span_builder(http_route.clone());
         builder.span_kind = Some(SpanKind::Server);
-        builder.attributes = Some(trace_attributes_from_request(&req, &http_route));
+
+        let mut attributes = trace_attributes_from_request(&req, &http_route);
+
+        if let Some(default_attributes) = &self.default_attributes {
+            attributes.extend(default_attributes.iter().cloned());
+        }
+        builder.attributes = Some(attributes);
 
         let span = self.tracer.build_with_context(builder, &parent_context);
         let cx = parent_context.with_span(span);
