@@ -79,12 +79,27 @@
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 //! # #[cfg(feature = "metrics-prometheus")]
 //! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
-//! use opentelemetry::global;
+//! use opentelemetry::{
+//!     global,
+//!     sdk::{
+//!         export::metrics::aggregation,
+//!         metrics::{controllers, processors, selectors},
+//!         propagation::TraceContextPropagator,
+//!     },
+//! };
 //!
 //! # #[cfg(feature = "metrics-prometheus")]
 //! #[actix_web::main]
 //! async fn main() -> std::io::Result<()> {
-//!     let exporter = opentelemetry_prometheus::exporter().init();
+//!     let controller = controllers::basic(
+//!         processors::factory(
+//!             selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
+//!             aggregation::cumulative_temporality_selector(),
+//!         )
+//!         .with_memory(true),
+//!     )
+//!     .build();
+//!     let exporter = opentelemetry_prometheus::exporter(controller).init();
 //!     let meter = global::meter("actix_web");
 //!
 //!     // Request metrics middleware

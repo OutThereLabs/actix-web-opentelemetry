@@ -10,7 +10,7 @@ use opentelemetry::{
     global,
     propagation::Extractor,
     trace::{
-        FutureExt as OtelFutureExt, SpanKind, StatusCode, TraceContextExt, Tracer, TracerProvider,
+        FutureExt as OtelFutureExt, SpanKind, Status, TraceContextExt, Tracer, TracerProvider,
     },
 };
 use opentelemetry_semantic_conventions::trace::HTTP_STATUS_CODE;
@@ -195,21 +195,20 @@ where
                     let span = cx.span();
                     span.set_attribute(HTTP_STATUS_CODE.i64(ok_res.status().as_u16() as i64));
                     if ok_res.status().is_server_error() {
-                        span.set_status(
-                            StatusCode::Error,
+                        span.set_status(Status::error(
                             ok_res
                                 .status()
                                 .canonical_reason()
                                 .map(ToString::to_string)
                                 .unwrap_or_default(),
-                        );
+                        ));
                     };
                     span.end();
                     Ok(ok_res)
                 }
                 Err(err) => {
                     let span = cx.span();
-                    span.set_status(StatusCode::Error, format!("{:?}", err));
+                    span.set_status(Status::error(format!("{:?}", err)));
                     span.end();
                     Err(err)
                 }
