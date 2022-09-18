@@ -2,7 +2,8 @@
 
 use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
-use opentelemetry::metrics::{Counter, Meter, Unit, UpDownCounter, ValueRecorder};
+use opentelemetry::metrics::{Histogram, Meter, Unit, UpDownCounter};
+use opentelemetry::Context;
 use std::{sync::Arc, time::SystemTime};
 
 use crate::util::metrics_attributes_from_request;
@@ -12,14 +13,12 @@ use crate::RouteFormatter;
 // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/http-metrics.md
 use opentelemetry_semantic_conventions::trace::HTTP_STATUS_CODE;
 const HTTP_SERVER_ACTIVE_REQUESTS: &str = "http.server.active_requests";
-const HTTP_SERVER_TOTAL_REQUESTS: &str = "http.server.total_requests";
 const HTTP_SERVER_DURATION: &str = "http.server.duration";
 
 #[derive(Clone, Debug)]
 struct Metrics {
     http_server_active_requests: UpDownCounter<i64>,
-    http_server_total_requests: Counter<u64>,
-    http_server_duration: ValueRecorder<f64>,
+    http_server_duration: Histogram<f64>,
 }
 
 impl Metrics {
@@ -30,20 +29,14 @@ impl Metrics {
             .with_description("HTTP concurrent in-flight requests per route")
             .init();
 
-        let http_server_total_requests = meter
-            .u64_counter(HTTP_SERVER_TOTAL_REQUESTS)
-            .with_description("HTTP requests per route")
-            .init();
-
         let http_server_duration = meter
-            .f64_value_recorder(HTTP_SERVER_DURATION)
+            .f64_histogram(HTTP_SERVER_DURATION)
             .with_description("HTTP inbound request duration per route")
             .with_unit(Unit::new("ms"))
             .init();
 
         Metrics {
             http_server_active_requests,
-            http_server_total_requests,
             http_server_duration,
         }
     }
@@ -90,7 +83,14 @@ impl RequestMetricsBuilder {
 ///     RequestMetricsBuilder,
 ///     RequestTracing,
 /// };
-/// use opentelemetry::global;
+/// use opentelemetry::{
+///     global,
+///     sdk::{
+///         export::metrics::aggregation,
+///         metrics::{controllers, processors, selectors},
+///         propagation::TraceContextPropagator,
+///     },
+/// };
 ///
 /// # #[cfg(feature = "metrics-prometheus")]
 /// #[actix_web::main]
@@ -100,7 +100,15 @@ impl RequestMetricsBuilder {
 ///     let request_metrics = RequestMetricsBuilder::new().build(meter);
 ///
 ///     // Prometheus request metrics handler
-///     let exporter = opentelemetry_prometheus::exporter().init();
+///     let controller = controllers::basic(
+///         processors::factory(
+///             selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
+///             aggregation::cumulative_temporality_selector(),
+///         )
+///         .with_memory(true),
+///     )
+///     .build();
+///     let exporter = opentelemetry_prometheus::exporter(controller).init();
 ///     let metrics_handler = PrometheusMetricsHandler::new(exporter);
 ///
 ///     // Run actix server, metrics are now available at http://localhost:8080/metrics
@@ -181,24 +189,24 @@ where
         }
 
         let mut attributes = metrics_attributes_from_request(&req, &http_target);
+        let cx = Context::current();
 
-        let http_server_active_requests =
-            self.metrics.http_server_active_requests.bind(&attributes);
-        http_server_active_requests.add(1);
+        self.metrics
+            .http_server_active_requests
+            .add(&cx, 1, &attributes);
 
         let request_metrics = self.metrics.clone();
         Box::pin(self.service.call(req).map(move |res| {
-            http_server_active_requests.add(-1);
+            request_metrics
+                .http_server_active_requests
+                .add(&cx, -1, &attributes);
 
             // Ignore actix errors for metrics
             if let Ok(res) = res {
                 attributes.push(HTTP_STATUS_CODE.string(res.status().as_str().to_owned()));
 
-                request_metrics
-                    .http_server_total_requests
-                    .add(1, &attributes);
-
                 request_metrics.http_server_duration.record(
+                    &cx,
                     timer
                         .elapsed()
                         .map(|t| t.as_secs_f64() * 1000.0)

@@ -25,7 +25,7 @@ async fn execute_request(client: awc::Client) -> io::Result<String> {
 async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     // Start a new jaeger trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
-    let _tracer = opentelemetry_jaeger::new_pipeline()
+    let _tracer = opentelemetry_jaeger::new_agent_pipeline()
         .with_service_name("actix_client")
         .install_simple()?;
 
@@ -33,6 +33,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let response = execute_request(client).await?;
 
     println!("Response: {}", response);
+
+    global::shutdown_tracer_provider();
 
     Ok(())
 }

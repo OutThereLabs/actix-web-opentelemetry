@@ -17,7 +17,7 @@ use futures_util::{future::TryFutureExt as _, Future, Stream};
 use opentelemetry::{
     global,
     propagation::Injector,
-    trace::{SpanKind, StatusCode, TraceContextExt, Tracer, TracerProvider},
+    trace::{SpanKind, Status, TraceContextExt, Tracer, TracerProvider},
     Context, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::{
@@ -287,29 +287,26 @@ impl InstrumentedClientRequest {
 
 // convert http status code to span status following the rules described by the spec:
 // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/http.md#status
-fn convert_status(status: http::StatusCode) -> (StatusCode, Option<String>) {
+fn convert_status(status: http::StatusCode) -> Status {
     match status.as_u16() {
-        100..=399 => (StatusCode::Unset, None),
+        100..=399 => Status::Unset,
         // since we are the client, we MUST treat 4xx as error
-        400..=599 => (StatusCode::Error, None),
-        code => (
-            StatusCode::Error,
-            Some(format!("Invalid HTTP status code {}", code)),
-        ),
+        400..=599 => Status::error(""),
+        code => Status::error(format!("Invalid HTTP status code {}", code)),
     }
 }
 
 fn record_response<T>(response: &ClientResponse<T>, cx: &Context) {
     let span = cx.span();
-    let (span_status, msg) = convert_status(response.status());
-    span.set_status(span_status, msg.unwrap_or_default());
+    let status = convert_status(response.status());
+    span.set_status(status);
     span.set_attribute(HTTP_STATUS_CODE.i64(response.status().as_u16() as i64));
     span.end();
 }
 
 fn record_err<T: fmt::Debug>(err: T, cx: &Context) {
     let span = cx.span();
-    span.set_status(StatusCode::Error, format!("{:?}", err));
+    span.set_status(Status::error(format!("{:?}", err)));
     span.end();
 }
 
