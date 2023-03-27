@@ -22,7 +22,7 @@ actix-web = { version = "4.0", default-features = false, features = ["compress-z
 awc = { version = "3.0", optional = true, default-features = false, features = ["compress-zstd"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 opentelemetry = { version = "0.18", default-features = false, features = ["trace", "rt-tokio-current-thread"] }
-opentelemetry-prometheus = { version = "0.11", optional = true }
+opentelemetry-prometheus = { version = "0.12", optional = true }
 opentelemetry-semantic-conventions = "0.10"
 prometheus = { version = "0.13", default-features = false, optional = true }
 serde = "1.0"
