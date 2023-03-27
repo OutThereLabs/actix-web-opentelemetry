@@ -30,7 +30,7 @@ serde = "1.0"
 [dev-dependencies]
 actix-web = { version = "4.0", features = ["macros"] }
 actix-web-opentelemetry = { path = ".", features = ["metrics-prometheus", "sync-middleware", "awc"] }
-opentelemetry-jaeger = { version = "0.17", features = ["rt-tokio-current-thread"] }
+opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio-current-thread"] }
 
 [package.metadata.docs.rs]
 all-features = true
