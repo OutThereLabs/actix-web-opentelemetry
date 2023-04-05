@@ -1,6 +1,6 @@
 [package]
 name = "actix-web-opentelemetry"
-version = "0.13.0"
+version = "0.14.0-alpha.1"
 authors = ["Julian Tescher <julian@outtherelabs.com>"]
 description = "OpenTelemetry integration for Actix Web apps"
 homepage = "https://github.com/OutThereLabs/actix-web-opentelemetry"
@@ -17,20 +17,20 @@ metrics-prometheus = ["metrics", "opentelemetry-prometheus", "prometheus"]
 sync-middleware = []
 
 [dependencies]
-actix-http = { version = "3.0", default-features = false, features = ["compress-zstd"] }
-actix-web = { version = "4.0", default-features = false, features = ["compress-zstd"] }
-awc = { version = "3.0", optional = true, default-features = false, features = ["compress-zstd"] }
-futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
-opentelemetry = { version = "0.18", default-features = false, features = ["trace", "rt-tokio-current-thread"] }
-opentelemetry-prometheus = { version = "0.11", optional = true }
-opentelemetry-semantic-conventions = "0.10"
-prometheus = { version = "0.13", default-features = false, optional = true }
-serde = "1.0"
+actix-http = { version = "3.3.1", default-features = false, features = ["compress-zstd"] }
+actix-web = { version = "4.3.1", default-features = false, features = ["compress-zstd"] }
+awc = { version = "3.1.1", optional = true, default-features = false, features = ["compress-zstd"] }
+futures-util = { version = "0.3.28", default-features = false, features = ["alloc"] }
+opentelemetry = { version = "0.19", default-features = false, features = ["trace", "rt-tokio-current-thread"] }
+opentelemetry-prometheus = { version = "0.12", optional = true }
+opentelemetry-semantic-conventions = "0.11"
+prometheus = { version = "0.13.3", default-features = false, optional = true }
+serde = "1.0.159"
 
 [dev-dependencies]
-actix-web = { version = "4.0", features = ["macros"] }
+actix-web = { version = "4.3.1", features = ["macros"] }
 actix-web-opentelemetry = { path = ".", features = ["metrics-prometheus", "sync-middleware", "awc"] }
-opentelemetry-jaeger = { version = "0.17", features = ["rt-tokio-current-thread"] }
+opentelemetry-jaeger = { version = "0.18", features = ["rt-tokio-current-thread"] }
 
 [package.metadata.docs.rs]
 all-features = true

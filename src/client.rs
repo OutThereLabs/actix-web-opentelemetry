@@ -1,4 +1,4 @@
-use crate::util::{http_method_str, http_url};
+use crate::util::{http_method_str, http_url, NET_PEER_IP};
 use actix_http::{encoding::Decoder, BoxedPayloadStream, Error, Payload};
 use actix_web::{
     body::MessageBody,
@@ -22,7 +22,7 @@ use opentelemetry::{
 };
 use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_STATUS_CODE, HTTP_URL,
-    HTTP_USER_AGENT, NET_PEER_IP, NET_PEER_NAME, NET_PEER_PORT,
+    HTTP_USER_AGENT, NET_PEER_NAME, NET_PEER_PORT,
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
