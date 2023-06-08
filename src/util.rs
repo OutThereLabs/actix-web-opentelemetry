@@ -6,10 +6,10 @@ use actix_web::{
 #[cfg(feature = "metrics")]
 use opentelemetry::KeyValue;
 use opentelemetry::{trace::OrderMap, Key, Value};
-use opentelemetry_semantic_conventions::trace::{
-    HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_HOST, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_SERVER_NAME,
-    HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_PORT, NET_PEER_IP,
-};
+use opentelemetry_semantic_conventions::{resource::HOST_NAME, trace::{
+    HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME,
+    HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_NAME, NET_HOST_PORT, NET_SOCK_PEER_ADDR,
+}};
 #[cfg(feature = "awc")]
 use std::fmt::Write;
 
@@ -88,13 +88,13 @@ pub(super) fn trace_attributes_from_request(
     let mut attributes = OrderMap::with_capacity(11);
     attributes.insert(HTTP_METHOD, http_method_str(req.method()));
     attributes.insert(HTTP_FLAVOR, http_flavor(req.version()));
-    attributes.insert(HTTP_HOST, conn_info.host().to_string().into());
+    attributes.insert(HOST_NAME, conn_info.host().to_string().into());
     attributes.insert(HTTP_ROUTE, http_route.to_owned().into());
     attributes.insert(HTTP_SCHEME, http_scheme(conn_info.scheme()));
 
     let server_name = req.app_config().host();
     if server_name != conn_info.host() {
-        attributes.insert(HTTP_SERVER_NAME, server_name.to_string().into());
+        attributes.insert(NET_HOST_NAME, server_name.to_string().into());
     }
     if let Some(port) = conn_info
         .host()
@@ -123,7 +123,7 @@ pub(super) fn trace_attributes_from_request(
     if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
         if Some(peer_addr.as_str()) != remote_addr {
             // Client is going through a proxy
-            attributes.insert(NET_PEER_IP, peer_addr.into());
+            attributes.insert(NET_SOCK_PEER_ADDR, peer_addr.into());
         }
     }
 
@@ -140,13 +140,13 @@ pub(super) fn metrics_attributes_from_request(
     let mut attributes = Vec::with_capacity(11);
     attributes.push(KeyValue::new(HTTP_METHOD, http_method_str(req.method())));
     attributes.push(KeyValue::new(HTTP_FLAVOR, http_flavor(req.version())));
-    attributes.push(HTTP_HOST.string(conn_info.host().to_string()));
+    attributes.push(HOST_NAME.string(conn_info.host().to_string()));
     attributes.push(HTTP_TARGET.string(http_target.to_owned()));
     attributes.push(KeyValue::new(HTTP_SCHEME, http_scheme(conn_info.scheme())));
 
     let server_name = req.app_config().host();
     if server_name != conn_info.host() {
-        attributes.push(HTTP_SERVER_NAME.string(server_name.to_string()));
+        attributes.push(NET_HOST_NAME.string(server_name.to_string()));
     }
     if let Some(port) = conn_info
         .host()
@@ -161,7 +161,7 @@ pub(super) fn metrics_attributes_from_request(
     if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
         if Some(peer_addr.as_str()) != remote_addr {
             // Client is going through a proxy
-            attributes.push(NET_PEER_IP.string(peer_addr))
+            attributes.push(NET_SOCK_PEER_ADDR.string(peer_addr))
         }
     }
 
