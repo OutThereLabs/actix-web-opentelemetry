@@ -22,7 +22,7 @@ use opentelemetry::{
 };
 use opentelemetry_semantic_conventions::trace::{
     HTTP_FLAVOR, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_STATUS_CODE, HTTP_URL,
-    HTTP_USER_AGENT, NET_SOCK_PEER_ADDR, NET_PEER_NAME, NET_PEER_PORT,
+    HTTP_USER_AGENT, NET_PEER_NAME, NET_PEER_PORT, NET_SOCK_PEER_ADDR,
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
@@ -200,7 +200,8 @@ impl InstrumentedClientRequest {
         }
 
         if let Some(peer_addr) = self.request.get_peer_addr() {
-            self.attrs.push(NET_SOCK_PEER_ADDR.string(peer_addr.to_string()));
+            self.attrs
+                .push(NET_SOCK_PEER_ADDR.string(peer_addr.to_string()));
         }
 
         if let Some(peer_port) = self.request.get_uri().port_u16() {

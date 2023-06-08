@@ -6,10 +6,13 @@ use actix_web::{
 #[cfg(feature = "metrics")]
 use opentelemetry::KeyValue;
 use opentelemetry::{trace::OrderMap, Key, Value};
-use opentelemetry_semantic_conventions::{resource::HOST_NAME, trace::{
-    HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME,
-    HTTP_TARGET, HTTP_USER_AGENT, NET_HOST_NAME, NET_HOST_PORT, NET_SOCK_PEER_ADDR,
-}};
+use opentelemetry_semantic_conventions::{
+    resource::HOST_NAME,
+    trace::{
+        HTTP_CLIENT_IP, HTTP_FLAVOR, HTTP_METHOD, HTTP_ROUTE, HTTP_SCHEME, HTTP_TARGET,
+        HTTP_USER_AGENT, NET_HOST_NAME, NET_HOST_PORT, NET_SOCK_PEER_ADDR,
+    },
+};
 #[cfg(feature = "awc")]
 use std::fmt::Write;
 

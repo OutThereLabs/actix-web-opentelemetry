@@ -4,7 +4,7 @@
 
 ### Changed
 
-* Update to otel v0.19
+* Update to otel v0.19 (#126)
 
 ## [v0.13.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.13.0-alpha.1..v0.13.0)
 
