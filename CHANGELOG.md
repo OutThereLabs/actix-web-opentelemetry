@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [v0.14.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.13.0..v0.14.0)
 
 ### Changed
 
