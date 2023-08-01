@@ -14,20 +14,23 @@ use awc::{
     ClientRequest, ClientResponse,
 };
 use futures_util::{future::TryFutureExt as _, Future, Stream};
-use opentelemetry::{
+use opentelemetry_api::{
     global,
     propagation::Injector,
     trace::{SpanKind, Status, TraceContextExt, Tracer, TracerProvider},
     Context, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::{
-    HTTP_FLAVOR, HTTP_METHOD, HTTP_REQUEST_CONTENT_LENGTH, HTTP_STATUS_CODE, HTTP_URL,
-    HTTP_USER_AGENT, NET_PEER_NAME, NET_PEER_PORT, NET_SOCK_PEER_ADDR,
+    HTTP_REQUEST_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, SERVER_ADDRESS,
+    SERVER_PORT, URL_FULL, USER_AGENT_ORIGINAL,
 };
 use serde::Serialize;
-use std::fmt::{self, Debug};
 use std::mem;
 use std::str::FromStr;
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug},
+};
 
 /// A wrapper for the actix-web [awc::ClientRequest].
 pub struct InstrumentedClientRequest {
@@ -90,7 +93,7 @@ pub trait ClientExt {
     /// ```no_run
     /// use actix_web_opentelemetry::ClientExt;
     /// use awc::{Client, error::SendRequestError};
-    /// use opentelemetry::Context;
+    /// use opentelemetry_api::Context;
     ///
     /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
@@ -111,7 +114,7 @@ impl ClientExt for ClientRequest {
     fn trace_request_with_context(self, cx: Context) -> InstrumentedClientRequest {
         InstrumentedClientRequest {
             cx,
-            attrs: Vec::new(),
+            attrs: Vec::with_capacity(8),
             span_namer: default_span_namer,
             request: self,
         }
@@ -165,16 +168,36 @@ impl InstrumentedClientRequest {
         let tracer = global::tracer_provider().versioned_tracer(
             "actix-web-opentelemetry",
             Some(env!("CARGO_PKG_VERSION")),
+            Some(opentelemetry_semantic_conventions::SCHEMA_URL),
             None,
         );
+        // Client attributes
+        // https://github.com/open-telemetry/semantic-conventions/blob/v1.21.0/docs/http/http-spans.md#http-client
         self.attrs.extend(
             &mut [
-                KeyValue::new(HTTP_METHOD, http_method_str(self.request.get_method())),
-                KeyValue::new(HTTP_URL, http_url(self.request.get_uri())),
-                KeyValue::new(HTTP_FLAVOR, format!("{:?}", self.request.get_version())),
+                KeyValue::new(
+                    SERVER_ADDRESS,
+                    self.request
+                        .get_uri()
+                        .host()
+                        .map(|u| Cow::Owned(u.to_string()))
+                        .unwrap_or(Cow::Borrowed("unknown")),
+                ),
+                KeyValue::new(
+                    HTTP_REQUEST_METHOD,
+                    http_method_str(self.request.get_method()),
+                ),
+                KeyValue::new(URL_FULL, http_url(self.request.get_uri())),
             ]
             .into_iter(),
         );
+
+        if let Some(peer_port) = self.request.get_uri().port_u16() {
+            if peer_port != 80 && peer_port != 443 {
+                self.attrs.push(SERVER_PORT.i64(peer_port.into()));
+            }
+        }
+
         if let Some(user_agent) = self
             .request
             .headers()
@@ -182,7 +205,7 @@ impl InstrumentedClientRequest {
             .and_then(|len| len.to_str().ok())
         {
             self.attrs
-                .push(KeyValue::new(HTTP_USER_AGENT, user_agent.to_string()))
+                .push(KeyValue::new(USER_AGENT_ORIGINAL, user_agent.to_string()))
         }
 
         if let Some(content_length) = self.request.headers().get(CONTENT_LENGTH).and_then(|len| {
@@ -191,23 +214,7 @@ impl InstrumentedClientRequest {
                 .and_then(|str_len| str_len.parse::<i64>().ok())
         }) {
             self.attrs
-                .push(KeyValue::new(HTTP_REQUEST_CONTENT_LENGTH, content_length))
-        }
-
-        if let Some(host) = self.request.get_uri().host() {
-            self.attrs
-                .push(KeyValue::new(NET_PEER_NAME, host.to_string()));
-        }
-
-        if let Some(peer_addr) = self.request.get_peer_addr() {
-            self.attrs
-                .push(NET_SOCK_PEER_ADDR.string(peer_addr.to_string()));
-        }
-
-        if let Some(peer_port) = self.request.get_uri().port_u16() {
-            if peer_port != 80 && peer_port != 443 {
-                self.attrs.push(NET_PEER_PORT.i64(peer_port.into()));
-            }
+                .push(KeyValue::new(HTTP_REQUEST_BODY_SIZE, content_length))
         }
 
         let span = tracer
@@ -235,7 +242,7 @@ impl InstrumentedClientRequest {
     /// ```
     /// use actix_web_opentelemetry::ClientExt;
     /// use awc::{Client, error::SendRequestError};
-    /// use opentelemetry::KeyValue;
+    /// use opentelemetry_api::KeyValue;
     ///
     /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
     ///     let attrs = [KeyValue::new("dye-key", "dye-value")];
@@ -292,7 +299,7 @@ fn convert_status(status: http::StatusCode) -> Status {
     match status.as_u16() {
         100..=399 => Status::Unset,
         // since we are the client, we MUST treat 4xx as error
-        400..=599 => Status::error(""),
+        400..=599 => Status::error("Unexpected status code"),
         code => Status::error(format!("Invalid HTTP status code {}", code)),
     }
 }
@@ -301,7 +308,7 @@ fn record_response<T>(response: &ClientResponse<T>, cx: &Context) {
     let span = cx.span();
     let status = convert_status(response.status());
     span.set_status(status);
-    span.set_attribute(HTTP_STATUS_CODE.i64(response.status().as_u16() as i64));
+    span.set_attribute(HTTP_RESPONSE_STATUS_CODE.i64(response.status().as_u16() as i64));
     span.end();
 }
 

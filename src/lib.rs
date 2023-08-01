@@ -50,6 +50,8 @@
 //! ```no_run
 //! use actix_web::{web, App, HttpServer};
 //! use actix_web_opentelemetry::RequestTracing;
+//! use opentelemetry_api::global;
+//! use opentelemetry_sdk::trace::TracerProvider;
 //!
 //! async fn index() -> &'static str {
 //!     "Hello world!"
@@ -60,8 +62,15 @@
 //!     // Install an OpenTelemetry trace pipeline.
 //!     // Swap for https://docs.rs/opentelemetry-jaeger or other compatible
 //!     // exporter to send trace information to your collector.
-//!     opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
+//!     let exporter = opentelemetry_stdout::SpanExporter::default();
 //!
+//!     // Configure your tracer provider with your exporter(s)
+//!     let provider = TracerProvider::builder()
+//!         .with_simple_exporter(exporter)
+//!         .build();
+//!     global::set_tracer_provider(provider);
+//!
+//!     // add the request tracing middleware to create spans for each request
 //!     HttpServer::new(|| {
 //!         App::new()
 //!             .wrap(RequestTracing::new())
@@ -78,42 +87,37 @@
 //! ```no_run
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 //! # #[cfg(feature = "metrics-prometheus")]
-//! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetricsBuilder, RequestTracing};
-//! use opentelemetry::{
-//!     global,
-//!     sdk::{
-//!         export::metrics::aggregation,
-//!         metrics::{controllers, processors, selectors},
-//!         propagation::TraceContextPropagator,
-//!     },
-//! };
+//! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
+//! use opentelemetry_api::global;
+//! use opentelemetry_sdk::metrics::MeterProvider;
 //!
 //! # #[cfg(feature = "metrics-prometheus")]
 //! #[actix_web::main]
-//! async fn main() -> std::io::Result<()> {
-//!     let controller = controllers::basic(
-//!         processors::factory(
-//!             selectors::simple::histogram([1.0, 2.0, 5.0, 10.0, 20.0, 50.0]),
-//!             aggregation::cumulative_temporality_selector(),
-//!         )
-//!     )
-//!     .build();
-//!     let exporter = opentelemetry_prometheus::exporter(controller).init();
-//!     let meter = global::meter("actix_web");
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Configure prometheus or your preferred metrics service
+//!     let registry = prometheus::Registry::new();
+//!     let exporter = opentelemetry_prometheus::exporter()
+//!         .with_registry(registry.clone())
+//!         .build()?;
 //!
-//!     // Request metrics middleware
-//!     let request_metrics = RequestMetricsBuilder::new().build(meter);
+//!     // set up your meter provider with your exporter(s)
+//!     let provider = MeterProvider::builder()
+//!         .with_reader(exporter)
+//!         .build();
+//!     global::set_meter_provider(provider);
 //!
 //!     // Run actix server, metrics are now available at http://localhost:8080/metrics
 //!     HttpServer::new(move || {
 //!         App::new()
 //!             .wrap(RequestTracing::new())
-//!             .wrap(request_metrics.clone())
-//!             .route("/metrics", web::get().to(PrometheusMetricsHandler::new(exporter.clone())))
+//!             .wrap(RequestMetrics::default())
+//!             .route("/metrics", web::get().to(PrometheusMetricsHandler::new(registry.clone())))
 //!         })
 //!         .bind("localhost:8080")?
 //!         .run()
-//!         .await
+//!         .await;
+//!
+//!     Ok(())
 //! }
 //! # #[cfg(not(feature = "metrics-prometheus"))]
 //! # fn main() {}
@@ -138,7 +142,6 @@
 //! [`actix-web`]: https://crates.io/crates/actix-web
 //! [`tokio`]: https://crates.io/crates/tokio
 #![deny(missing_docs, unreachable_pub, missing_debug_implementations)]
-#![cfg_attr(test, deny(warnings))]
 #![cfg_attr(docsrs, feature(doc_cfg), deny(rustdoc::broken_intra_doc_links))]
 
 #[cfg(feature = "awc")]

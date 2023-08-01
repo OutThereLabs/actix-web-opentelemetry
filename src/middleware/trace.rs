@@ -6,14 +6,14 @@ use actix_web::{
     Error,
 };
 use futures_util::future::{ok, FutureExt as _, LocalBoxFuture, Ready};
-use opentelemetry::{
+use opentelemetry_api::{
     global,
     propagation::Extractor,
     trace::{
         FutureExt as OtelFutureExt, SpanKind, Status, TraceContextExt, Tracer, TracerProvider,
     },
 };
-use opentelemetry_semantic_conventions::trace::HTTP_STATUS_CODE;
+use opentelemetry_semantic_conventions::trace::HTTP_RESPONSE_STATUS_CODE;
 
 use super::route_formatter::RouteFormatter;
 use crate::util::trace_attributes_from_request;
@@ -25,6 +25,8 @@ use crate::util::trace_attributes_from_request;
 /// ```no_run
 /// use actix_web::{web, App, HttpServer};
 /// use actix_web_opentelemetry::RequestTracing;
+/// use opentelemetry_api::global;
+/// use opentelemetry_sdk::trace::TracerProvider;
 ///
 /// async fn index() -> &'static str {
 ///     "Hello world!"
@@ -35,7 +37,13 @@ use crate::util::trace_attributes_from_request;
 ///     // Install an OpenTelemetry trace pipeline.
 ///     // Swap for https://docs.rs/opentelemetry-jaeger or other compatible
 ///     // exporter to send trace information to your collector.
-///     opentelemetry::sdk::export::trace::stdout::new_pipeline().install_simple();
+///     let exporter = opentelemetry_stdout::SpanExporter::default();
+///
+///     // Configure your tracer provider with your exporter(s)
+///     let provider = TracerProvider::builder()
+///         .with_simple_exporter(exporter)
+///         .build();
+///     global::set_tracer_provider(provider);
 ///
 ///     HttpServer::new(|| {
 ///         App::new()
@@ -115,6 +123,7 @@ where
             global::tracer_provider().versioned_tracer(
                 "actix-web-opentelemetry",
                 Some(env!("CARGO_PKG_VERSION")),
+                Some(opentelemetry_semantic_conventions::SCHEMA_URL),
                 None,
             ),
             service,
@@ -193,7 +202,9 @@ where
             .map(move |res| match res {
                 Ok(ok_res) => {
                     let span = cx.span();
-                    span.set_attribute(HTTP_STATUS_CODE.i64(ok_res.status().as_u16() as i64));
+                    span.set_attribute(
+                        HTTP_RESPONSE_STATUS_CODE.i64(ok_res.status().as_u16() as i64),
+                    );
                     if ok_res.status().is_server_error() {
                         span.set_status(Status::error(
                             ok_res
