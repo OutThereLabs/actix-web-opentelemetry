@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.15.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.14.0..v0.15.0)
+
+### Changed
+
+* Update to otel v0.20 (#131)
+* Update to semantic conventions spec v1.21 (#131)
+
+See the [semantic conventions](https://github.com/open-telemetry/semantic-conventions/blob/v1.21.0/docs/http/README.md)
+documentation for details about instrument and span updates.
+
 ## [v0.14.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.13.0..v0.14.0)
 
 ### Changed
