@@ -90,13 +90,11 @@ pub(super) fn trace_attributes_from_request(
             attributes.insert(CLIENT_SOCKET_ADDRESS, peer_addr.into());
         }
     }
-    attributes.insert(SERVER_ADDRESS, conn_info.host().to_string().into());
-    if let Some(port) = conn_info
-        .host()
-        .split_terminator(':')
-        .nth(1)
-        .and_then(|port| port.parse::<i64>().ok())
-    {
+    let mut host_parts = conn_info.host().split_terminator(':');
+    if let Some(host) = host_parts.next() {
+        attributes.insert(SERVER_ADDRESS, host.to_string().into());
+    }
+    if let Some(port) = host_parts.next().and_then(|port| port.parse::<i64>().ok()) {
         if port != 80 && port != 443 {
             attributes.insert(SERVER_PORT, port.into());
         }
