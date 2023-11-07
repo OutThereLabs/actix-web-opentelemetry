@@ -1,6 +1,6 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
-use opentelemetry_api::{global, KeyValue};
+use opentelemetry::{global, KeyValue};
 use opentelemetry_sdk::{
     metrics::{Aggregation, Instrument, MeterProvider, Stream},
     propagation::TraceContextPropagator,

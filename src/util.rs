@@ -3,9 +3,7 @@ use actix_web::{
     dev::ServiceRequest,
     http::{Method, Version},
 };
-#[cfg(feature = "metrics")]
-use opentelemetry_api::KeyValue;
-use opentelemetry_api::{trace::OrderMap, Key, Value};
+use opentelemetry::{KeyValue, Value};
 use opentelemetry_semantic_conventions::trace::{
     CLIENT_ADDRESS, CLIENT_SOCKET_ADDRESS, HTTP_REQUEST_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_ROUTE,
     NETWORK_PROTOCOL_VERSION, SERVER_ADDRESS, SERVER_PORT, URL_PATH, URL_QUERY, URL_SCHEME,
@@ -72,47 +70,53 @@ pub(super) fn url_scheme(scheme: &str) -> Value {
 pub(super) fn trace_attributes_from_request(
     req: &ServiceRequest,
     http_route: &str,
-) -> OrderMap<Key, Value> {
+) -> Vec<KeyValue> {
     let conn_info = req.connection_info();
     let remote_addr = conn_info.realip_remote_addr();
 
-    let mut attributes = OrderMap::with_capacity(14);
+    let mut attributes = Vec::with_capacity(14);
 
     // Server attrs
     // <https://github.com/open-telemetry/semantic-conventions/blob/v1.21.0/docs/http/http-spans.md#http-server>
-    attributes.insert(HTTP_ROUTE, http_route.to_owned().into());
+    attributes.push(KeyValue::new(HTTP_ROUTE, http_route.to_owned()));
     if let Some(remote) = remote_addr {
-        attributes.insert(CLIENT_ADDRESS, remote.to_string().into());
+        attributes.push(KeyValue::new(CLIENT_ADDRESS, remote.to_string()));
     }
     if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
         if Some(peer_addr.as_str()) != remote_addr {
             // Client is going through a proxy
-            attributes.insert(CLIENT_SOCKET_ADDRESS, peer_addr.into());
+            attributes.push(KeyValue::new(CLIENT_SOCKET_ADDRESS, peer_addr));
         }
     }
     let mut host_parts = conn_info.host().split_terminator(':');
     if let Some(host) = host_parts.next() {
-        attributes.insert(SERVER_ADDRESS, host.to_string().into());
+        attributes.push(KeyValue::new(SERVER_ADDRESS, host.to_string()));
     }
     if let Some(port) = host_parts.next().and_then(|port| port.parse::<i64>().ok()) {
         if port != 80 && port != 443 {
-            attributes.insert(SERVER_PORT, port.into());
+            attributes.push(KeyValue::new(SERVER_PORT, port));
         }
     }
     if let Some(path_query) = req.uri().path_and_query() {
         if path_query.path() != "/" {
-            attributes.insert(URL_PATH, path_query.path().to_string().into());
+            attributes.push(KeyValue::new(URL_PATH, path_query.path().to_string()));
         }
         if let Some(query) = path_query.query() {
-            attributes.insert(URL_QUERY, query.to_string().into());
+            attributes.push(KeyValue::new(URL_QUERY, query.to_string()));
         }
     }
-    attributes.insert(URL_SCHEME, url_scheme(conn_info.scheme()));
+    attributes.push(KeyValue::new(URL_SCHEME, url_scheme(conn_info.scheme())));
 
     // Common attrs
     // <https://github.com/open-telemetry/semantic-conventions/blob/v1.21.0/docs/http/http-spans.md#common-attributes>
-    attributes.insert(HTTP_REQUEST_METHOD, http_method_str(req.method()));
-    attributes.insert(NETWORK_PROTOCOL_VERSION, protocol_version(req.version()));
+    attributes.push(KeyValue::new(
+        HTTP_REQUEST_METHOD,
+        http_method_str(req.method()),
+    ));
+    attributes.push(KeyValue::new(
+        NETWORK_PROTOCOL_VERSION,
+        protocol_version(req.version()),
+    ));
 
     if let Some(content_length) = req
         .headers()
@@ -120,7 +124,7 @@ pub(super) fn trace_attributes_from_request(
         .and_then(|len| len.to_str().ok().and_then(|s| s.parse::<i64>().ok()))
         .filter(|&len| len > 0)
     {
-        attributes.insert(HTTP_REQUEST_BODY_SIZE, content_length.into());
+        attributes.push(KeyValue::new(HTTP_REQUEST_BODY_SIZE, content_length));
     }
 
     if let Some(user_agent) = req
@@ -128,7 +132,7 @@ pub(super) fn trace_attributes_from_request(
         .get(header::USER_AGENT)
         .and_then(|s| s.to_str().ok())
     {
-        attributes.insert(USER_AGENT_ORIGINAL, user_agent.to_string().into());
+        attributes.push(KeyValue::new(USER_AGENT_ORIGINAL, user_agent.to_string()));
     }
 
     attributes

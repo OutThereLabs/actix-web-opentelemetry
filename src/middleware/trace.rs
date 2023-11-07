@@ -6,7 +6,7 @@ use actix_web::{
     Error,
 };
 use futures_util::future::{ok, FutureExt as _, LocalBoxFuture, Ready};
-use opentelemetry_api::{
+use opentelemetry::{
     global,
     propagation::Extractor,
     trace::{
@@ -25,7 +25,7 @@ use crate::util::trace_attributes_from_request;
 /// ```no_run
 /// use actix_web::{web, App, HttpServer};
 /// use actix_web_opentelemetry::RequestTracing;
-/// use opentelemetry_api::global;
+/// use opentelemetry::global;
 /// use opentelemetry_sdk::trace::TracerProvider;
 ///
 /// async fn index() -> &'static str {
@@ -228,7 +228,7 @@ where
         #[cfg(feature = "sync-middleware")]
         drop(attachment);
 
-        Box::pin(async move { fut.await })
+        Box::pin(fut)
     }
 }
 

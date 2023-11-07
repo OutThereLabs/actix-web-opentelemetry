@@ -50,7 +50,7 @@
 //! ```no_run
 //! use actix_web::{web, App, HttpServer};
 //! use actix_web_opentelemetry::RequestTracing;
-//! use opentelemetry_api::global;
+//! use opentelemetry::global;
 //! use opentelemetry_sdk::trace::TracerProvider;
 //!
 //! async fn index() -> &'static str {
@@ -88,7 +88,7 @@
 //! use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 //! # #[cfg(feature = "metrics-prometheus")]
 //! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
-//! use opentelemetry_api::global;
+//! use opentelemetry::global;
 //! use opentelemetry_sdk::metrics::MeterProvider;
 //!
 //! # #[cfg(feature = "metrics-prometheus")]
