@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## [v0.16.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.15.0..v0.16.0)
 
 ### Changed
 
-* Update to otel v0.21
+* Update to otel v0.21 (#135)
+* Remove active request units until bug is resolved (#136)
 
 ## [v0.15.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.14.0..v0.15.0)
 
