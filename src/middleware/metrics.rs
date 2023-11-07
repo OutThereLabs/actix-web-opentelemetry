@@ -46,7 +46,6 @@ impl Metrics {
             .with_description(
                 "Measures the number of concurrent HTTP requests that are currently in-flight.",
             )
-            .with_unit(Unit::new("{request}"))
             .init();
 
         let http_server_request_size = meter
