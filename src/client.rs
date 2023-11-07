@@ -14,7 +14,7 @@ use awc::{
     ClientRequest, ClientResponse,
 };
 use futures_util::{future::TryFutureExt as _, Future, Stream};
-use opentelemetry_api::{
+use opentelemetry::{
     global,
     propagation::Injector,
     trace::{SpanKind, Status, TraceContextExt, Tracer, TracerProvider},
@@ -93,7 +93,7 @@ pub trait ClientExt {
     /// ```no_run
     /// use actix_web_opentelemetry::ClientExt;
     /// use awc::{Client, error::SendRequestError};
-    /// use opentelemetry_api::Context;
+    /// use opentelemetry::Context;
     ///
     /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
     ///     let res = client.get("http://localhost:8080")
@@ -242,7 +242,7 @@ impl InstrumentedClientRequest {
     /// ```
     /// use actix_web_opentelemetry::ClientExt;
     /// use awc::{Client, error::SendRequestError};
-    /// use opentelemetry_api::KeyValue;
+    /// use opentelemetry::KeyValue;
     ///
     /// async fn execute_request(client: &Client) -> Result<(), SendRequestError> {
     ///     let attrs = [KeyValue::new("dye-key", "dye-value")];

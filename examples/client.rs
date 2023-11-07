@@ -1,5 +1,5 @@
 use actix_web_opentelemetry::ClientExt;
-use opentelemetry_api::global;
+use opentelemetry::global;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use std::error::Error;
 use std::io;

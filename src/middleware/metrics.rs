@@ -3,8 +3,10 @@
 use actix_http::header::CONTENT_LENGTH;
 use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
-use opentelemetry_api::global;
-use opentelemetry_api::metrics::{Histogram, Meter, MeterProvider, Unit, UpDownCounter};
+use opentelemetry::{
+    global,
+    metrics::{Histogram, Meter, MeterProvider, Unit, UpDownCounter},
+};
 use std::borrow::Cow;
 use std::{sync::Arc, time::SystemTime};
 
@@ -128,7 +130,7 @@ fn get_versioned_meter(meter_provider: impl MeterProvider) -> Meter {
 /// ```no_run
 /// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 /// use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
-/// use opentelemetry_api::global;
+/// use opentelemetry::global;
 /// use opentelemetry_sdk::metrics::MeterProvider;
 ///
 /// #[actix_web::main]
@@ -290,7 +292,7 @@ where
 pub(crate) mod prometheus {
     use actix_web::{dev, http::StatusCode};
     use futures_util::future::{self, LocalBoxFuture};
-    use opentelemetry_api::{global, metrics::MetricsError};
+    use opentelemetry::{global, metrics::MetricsError};
     use prometheus::{Encoder, Registry, TextEncoder};
 
     /// Prometheus request metrics service
