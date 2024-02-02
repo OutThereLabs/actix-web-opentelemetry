@@ -1,6 +1,9 @@
 //! # Metrics Middleware
 
-use actix_http::header::CONTENT_LENGTH;
+use actix_http::{
+    body::{BodySize, MessageBody},
+    header::CONTENT_LENGTH,
+};
 use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
@@ -187,7 +190,7 @@ where
         Error = actix_web::Error,
     >,
     S::Future: 'static,
-    B: 'static,
+    B: MessageBody + 'static,
 {
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
@@ -222,7 +225,7 @@ where
         Error = actix_web::Error,
     >,
     S::Future: 'static,
-    B: 'static,
+    B: MessageBody + 'static,
 {
     type Response = dev::ServiceResponse<B>;
     type Error = actix_web::Error;
@@ -263,12 +266,10 @@ where
             // Ignore actix errors for metrics
             if let Ok(res) = res {
                 attributes.push(HTTP_RESPONSE_STATUS_CODE.i64(res.status().as_u16() as i64));
-                let response_size = res
-                    .response()
-                    .headers()
-                    .get(CONTENT_LENGTH)
-                    .and_then(|len| len.to_str().ok().and_then(|s| s.parse().ok()))
-                    .unwrap_or(0);
+                let response_size = match res.response().body().size() {
+                    BodySize::Sized(size) => size,
+                    _ => 0,
+                };
                 request_metrics
                     .http_server_response_size
                     .record(response_size, &attributes);
