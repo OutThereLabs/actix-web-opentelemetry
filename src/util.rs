@@ -146,7 +146,7 @@ pub(super) fn metrics_attributes_from_request(
     let conn_info = req.connection_info();
 
     let mut attributes = Vec::with_capacity(7);
-    attributes.push(HTTP_ROUTE.string(http_route));
+    attributes.push(KeyValue::new(HTTP_ROUTE, http_route));
     attributes.push(KeyValue::new(
         HTTP_REQUEST_METHOD,
         http_method_str(req.method()),
@@ -158,10 +158,10 @@ pub(super) fn metrics_attributes_from_request(
 
     let mut host_parts = conn_info.host().split_terminator(':');
     if let Some(host) = host_parts.next() {
-        attributes.push(SERVER_ADDRESS.string(host.to_string()));
+        attributes.push(KeyValue::new(SERVER_ADDRESS, host.to_string()));
     }
-    if let Some(port) = host_parts.next().and_then(|port| port.parse().ok()) {
-        attributes.push(SERVER_PORT.i64(port))
+    if let Some(port) = host_parts.next().and_then(|port| port.parse::<i64>().ok()) {
+        attributes.push(KeyValue::new(SERVER_PORT, port))
     }
     attributes.push(KeyValue::new(URL_SCHEME, url_scheme(conn_info.scheme())));
 

@@ -6,6 +6,7 @@ use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
     global,
     metrics::{Histogram, Meter, MeterProvider, Unit, UpDownCounter},
+    KeyValue,
 };
 use std::borrow::Cow;
 use std::{sync::Arc, time::SystemTime};
@@ -130,7 +131,7 @@ fn get_versioned_meter(meter_provider: impl MeterProvider) -> Meter {
 /// use actix_web::{dev, http, web, App, HttpRequest, HttpServer};
 /// use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 /// use opentelemetry::global;
-/// use opentelemetry_sdk::metrics::MeterProvider;
+/// use opentelemetry_sdk::metrics::SdkMeterProvider;
 ///
 /// #[actix_web::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -141,7 +142,7 @@ fn get_versioned_meter(meter_provider: impl MeterProvider) -> Meter {
 ///         .build()?;
 ///
 ///     // set up your meter provider with your exporter(s)
-///     let provider = MeterProvider::builder()
+///     let provider = SdkMeterProvider::builder()
 ///         .with_reader(exporter)
 ///         .build();
 ///     global::set_meter_provider(provider);
@@ -262,7 +263,10 @@ where
 
             // Ignore actix errors for metrics
             if let Ok(res) = res {
-                attributes.push(HTTP_RESPONSE_STATUS_CODE.i64(res.status().as_u16() as i64));
+                attributes.push(KeyValue::new(
+                    HTTP_RESPONSE_STATUS_CODE,
+                    res.status().as_u16() as i64,
+                ));
                 let response_size = res
                     .response()
                     .headers()

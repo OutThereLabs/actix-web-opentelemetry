@@ -194,7 +194,8 @@ impl InstrumentedClientRequest {
 
         if let Some(peer_port) = self.request.get_uri().port_u16() {
             if peer_port != 80 && peer_port != 443 {
-                self.attrs.push(SERVER_PORT.i64(peer_port.into()));
+                self.attrs
+                    .push(KeyValue::new(SERVER_PORT, peer_port as i64));
             }
         }
 
@@ -308,7 +309,7 @@ fn record_response<T>(response: &ClientResponse<T>, cx: &Context) {
     let span = cx.span();
     let status = convert_status(response.status());
     span.set_status(status);
-    span.set_attribute(HTTP_RESPONSE_STATUS_CODE.i64(response.status().as_u16() as i64));
+    span.set_attribute(KeyValue::new(HTTP_RESPONSE_STATUS_CODE, response.status().as_u16() as i64));
     span.end();
 }
 
