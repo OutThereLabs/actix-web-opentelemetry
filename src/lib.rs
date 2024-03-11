@@ -89,7 +89,7 @@
 //! # #[cfg(feature = "metrics-prometheus")]
 //! use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 //! use opentelemetry::global;
-//! use opentelemetry_sdk::metrics::MeterProvider;
+//! use opentelemetry_sdk::metrics::SdkMeterProvider;
 //!
 //! # #[cfg(feature = "metrics-prometheus")]
 //! #[actix_web::main]
@@ -101,7 +101,7 @@
 //!         .build()?;
 //!
 //!     // set up your meter provider with your exporter(s)
-//!     let provider = MeterProvider::builder()
+//!     let provider = SdkMeterProvider::builder()
 //!         .with_reader(exporter)
 //!         .build();
 //!     global::set_meter_provider(provider);

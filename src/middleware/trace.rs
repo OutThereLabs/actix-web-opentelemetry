@@ -12,6 +12,7 @@ use opentelemetry::{
     trace::{
         FutureExt as OtelFutureExt, SpanKind, Status, TraceContextExt, Tracer, TracerProvider,
     },
+    KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::HTTP_RESPONSE_STATUS_CODE;
 
@@ -202,9 +203,10 @@ where
             .map(move |res| match res {
                 Ok(ok_res) => {
                     let span = cx.span();
-                    span.set_attribute(
-                        HTTP_RESPONSE_STATUS_CODE.i64(ok_res.status().as_u16() as i64),
-                    );
+                    span.set_attribute(KeyValue::new(
+                        HTTP_RESPONSE_STATUS_CODE,
+                        ok_res.status().as_u16() as i64,
+                    ));
                     if ok_res.status().is_server_error() {
                         span.set_status(Status::error(
                             ok_res

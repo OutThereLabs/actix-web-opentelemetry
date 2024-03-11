@@ -2,7 +2,7 @@ use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 use opentelemetry::{global, KeyValue};
 use opentelemetry_sdk::{
-    metrics::{Aggregation, Instrument, MeterProvider, Stream},
+    metrics::{Aggregation, Instrument, SdkMeterProvider, Stream},
     propagation::TraceContextPropagator,
     runtime::TokioCurrentThread,
     Resource,
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let exporter = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
-        let provider = MeterProvider::builder()
+        let provider = SdkMeterProvider::builder()
             .with_reader(exporter)
             .with_resource(Resource::new([KeyValue::new("service.name", "my_app")]))
             .with_view(
