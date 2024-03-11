@@ -6,6 +6,11 @@
 
 * Update to otel v0.22 (#147)
 
+### Fixed
+
+* Fix typo for http_server_response_size metric (#139)
+* Fix http_server_response_size metric (#140)
+
 ## [v0.16.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.15.0..v0.16.0)
 
 ### Changed
