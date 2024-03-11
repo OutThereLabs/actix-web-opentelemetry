@@ -59,7 +59,7 @@ impl Metrics {
 
         let http_server_response_size = meter
             .u64_histogram(HTTP_SERVER_RESPONSE_SIZE)
-            .with_description("Measures the size of HTTP request messages (compressed).")
+            .with_description("Measures the size of HTTP response messages (compressed).")
             .with_unit(Unit::new("By"))
             .init();
 
