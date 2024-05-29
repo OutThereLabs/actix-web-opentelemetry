@@ -1,8 +1,11 @@
 use actix_web_opentelemetry::ClientExt;
-use opentelemetry::global;
+use opentelemetry::{global, KeyValue};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use std::error::Error;
 use std::io;
+use opentelemetry_otlp::TonicExporterBuilder;
+use opentelemetry_sdk::{Resource, trace};
+use opentelemetry_sdk::runtime::TokioCurrentThread;
 
 async fn execute_request(client: awc::Client) -> io::Result<String> {
     let mut response = client
@@ -24,11 +27,23 @@ async fn execute_request(client: awc::Client) -> io::Result<String> {
 
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    // Start a new jaeger trace pipeline
+    // Start a new OTLP trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
-    let _tracer = opentelemetry_jaeger::new_agent_pipeline()
-        .with_service_name("actix_client")
-        .install_simple()?;
+
+    let service_name_resource = Resource::new(vec![KeyValue::new(
+        "service.name",
+        "actix_client"
+    )]);
+
+    let _tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(TonicExporterBuilder::default())
+        .with_trace_config(
+            trace::Config::default()
+                .with_resource(service_name_resource)
+        )
+        .install_batch(TokioCurrentThread)
+        .expect("pipeline install error");
 
     let client = awc::Client::new();
     let response = execute_request(client).await?;

@@ -121,12 +121,10 @@ where
 
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
-            global::tracer_provider().versioned_tracer(
-                "actix-web-opentelemetry",
-                Some(env!("CARGO_PKG_VERSION")),
-                Some(opentelemetry_semantic_conventions::SCHEMA_URL),
-                None,
-            ),
+            global::tracer_provider().tracer_builder("actix-web-opentelemetry")
+                .with_version(env!("CARGO_PKG_VERSION"))
+                .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
+                .build(),
             service,
             self.route_formatter.clone(),
         ))
