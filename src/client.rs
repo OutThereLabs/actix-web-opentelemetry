@@ -165,12 +165,11 @@ impl InstrumentedClientRequest {
         F: FnOnce(ClientRequest) -> R,
         R: Future<Output = AwcResult>,
     {
-        let tracer = global::tracer_provider().versioned_tracer(
-            "actix-web-opentelemetry",
-            Some(env!("CARGO_PKG_VERSION")),
-            Some(opentelemetry_semantic_conventions::SCHEMA_URL),
-            None,
-        );
+        let tracer = global::tracer_provider().tracer_builder("actix-web-opentelemetry")
+            .with_version(env!("CARGO_PKG_VERSION"))
+            .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
+            .build();
+
         // Client attributes
         // https://github.com/open-telemetry/semantic-conventions/blob/v1.21.0/docs/http/http-spans.md#http-client
         self.attrs.extend(

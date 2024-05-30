@@ -5,7 +5,7 @@ use actix_web::{
 };
 use opentelemetry::{KeyValue, Value};
 use opentelemetry_semantic_conventions::trace::{
-    CLIENT_ADDRESS, CLIENT_SOCKET_ADDRESS, HTTP_REQUEST_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_ROUTE,
+    CLIENT_ADDRESS, NETWORK_PEER_ADDRESS, HTTP_REQUEST_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_ROUTE,
     NETWORK_PROTOCOL_VERSION, SERVER_ADDRESS, SERVER_PORT, URL_PATH, URL_QUERY, URL_SCHEME,
     USER_AGENT_ORIGINAL,
 };
@@ -85,7 +85,7 @@ pub(super) fn trace_attributes_from_request(
     if let Some(peer_addr) = req.peer_addr().map(|socket| socket.ip().to_string()) {
         if Some(peer_addr.as_str()) != remote_addr {
             // Client is going through a proxy
-            attributes.push(KeyValue::new(CLIENT_SOCKET_ADDRESS, peer_addr));
+            attributes.push(KeyValue::new(NETWORK_PEER_ADDRESS, peer_addr));
         }
     }
     let mut host_parts = conn_info.host().split_terminator(':');

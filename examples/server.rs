@@ -1,12 +1,8 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 use opentelemetry::{global, KeyValue};
-use opentelemetry_sdk::{
-    metrics::{Aggregation, Instrument, SdkMeterProvider, Stream},
-    propagation::TraceContextPropagator,
-    runtime::TokioCurrentThread,
-    Resource,
-};
+use opentelemetry_otlp::{TonicExporterBuilder, WithExportConfig};
+use opentelemetry_sdk::{metrics::{Aggregation, Instrument, SdkMeterProvider, Stream}, propagation::TraceContextPropagator, runtime::TokioCurrentThread, Resource, trace};
 
 async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
     "Hello world!"
@@ -14,10 +10,21 @@ async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'stat
 
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Start a new jaeger trace pipeline
+    // Start a new OTLP trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
-    let _tracer = opentelemetry_jaeger::new_agent_pipeline()
-        .with_service_name("actix_server")
+
+    let service_name_resource = Resource::new(vec![KeyValue::new(
+        "service.name",
+        "actix_server"
+    )]);
+
+    let _tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(TonicExporterBuilder::default().with_endpoint("http://127.0.0.1:6565"))
+        .with_trace_config(
+            trace::Config::default()
+                .with_resource(service_name_resource)
+        )
         .install_batch(TokioCurrentThread)
         .expect("pipeline install error");
 
