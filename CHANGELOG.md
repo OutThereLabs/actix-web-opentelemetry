@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.18.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.17.0..v0.18.0)
+
+### Changed
+
+* Update to otel v0.23 (#157)
+
 ## [v0.17.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.16.0..v0.17.0)
 
 ### Changed
