@@ -23,7 +23,7 @@ awc = { version = "3.0", optional = true, default-features = false, features = [
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 opentelemetry = { version = "0.23", default-features = false, features = ["trace"] }
 opentelemetry-prometheus = { version = "0.16", optional = true }
-opentelemetry-semantic-conventions = "0.15"
+opentelemetry-semantic-conventions = "0.16"
 prometheus = { version = "0.13", default-features = false, optional = true }
 serde = "1.0"
 
