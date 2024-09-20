@@ -21,7 +21,7 @@ use opentelemetry::{
     Context, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::{
-    HTTP_REQUEST_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, SERVER_ADDRESS,
+    MESSAGING_MESSAGE_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, SERVER_ADDRESS,
     SERVER_PORT, URL_FULL, USER_AGENT_ORIGINAL,
 };
 use serde::Serialize;
@@ -214,7 +214,7 @@ impl InstrumentedClientRequest {
                 .and_then(|str_len| str_len.parse::<i64>().ok())
         }) {
             self.attrs
-                .push(KeyValue::new(HTTP_REQUEST_BODY_SIZE, content_length))
+                .push(KeyValue::new(MESSAGING_MESSAGE_BODY_SIZE, content_length))
         }
 
         let span = tracer
