@@ -32,7 +32,7 @@ actix-web = { version = "4.0", features = ["macros"] }
 actix-web-opentelemetry = { path = ".", features = ["metrics-prometheus", "sync-middleware", "awc"] }
 opentelemetry_sdk = { version = "0.24", features = ["metrics", "rt-tokio-current-thread"] }
 opentelemetry-otlp = "0.17"
-opentelemetry-stdout = { version = "0.5", features = ["trace", "metrics"] }
+opentelemetry-stdout = { version = "0.25", features = ["trace", "metrics"] }
 
 [package.metadata.docs.rs]
 all-features = true
