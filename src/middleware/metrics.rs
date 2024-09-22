@@ -8,7 +8,7 @@ use actix_web::dev;
 use futures_util::future::{self, FutureExt as _, LocalBoxFuture};
 use opentelemetry::{
     global,
-    metrics::{Histogram, Meter, MeterProvider, Unit, UpDownCounter},
+    metrics::{Histogram, Meter, MeterProvider, UpDownCounter},
     KeyValue,
 };
 use std::borrow::Cow;
@@ -44,7 +44,7 @@ impl Metrics {
         let http_server_duration = meter
             .f64_histogram(HTTP_SERVER_DURATION)
             .with_description("Measures the duration of inbound HTTP requests.")
-            .with_unit(Unit::new("s"))
+            .with_unit("s")
             .init();
 
         let http_server_active_requests = meter
@@ -57,13 +57,13 @@ impl Metrics {
         let http_server_request_size = meter
             .u64_histogram(HTTP_SERVER_REQUEST_SIZE)
             .with_description("Measures the size of HTTP request messages (compressed).")
-            .with_unit(Unit::new("By"))
+            .with_unit("By")
             .init();
 
         let http_server_response_size = meter
             .u64_histogram(HTTP_SERVER_RESPONSE_SIZE)
             .with_description("Measures the size of HTTP response messages (compressed).")
-            .with_unit(Unit::new("By"))
+            .with_unit("By")
             .init();
 
         Metrics {
