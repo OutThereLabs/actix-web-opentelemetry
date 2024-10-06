@@ -147,7 +147,7 @@
 #[cfg(feature = "awc")]
 mod client;
 mod middleware;
-pub(crate) mod util;
+mod util;
 
 #[cfg(feature = "awc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "awc")))]
@@ -159,6 +159,11 @@ pub use middleware::metrics::prometheus::PrometheusMetricsHandler;
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub use middleware::metrics::{RequestMetrics, RequestMetricsBuilder, RequestMetricsMiddleware};
+#[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
+pub use util::metrics_attributes_from_request;
+
+
 pub use {
     middleware::route_formatter::RouteFormatter,
     middleware::trace::{RequestTracing, RequestTracingMiddleware},
