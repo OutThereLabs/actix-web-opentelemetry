@@ -58,6 +58,7 @@ actix-web-opentelemetry = { path = ".", features = [
   "awc",
 ] }
 opentelemetry_sdk = { version = "0.27", features = [
+  "spec_unstable_metrics_views",
   "metrics",
   "rt-tokio-current-thread",
 ] }
