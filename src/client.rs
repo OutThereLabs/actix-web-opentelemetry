@@ -1,4 +1,7 @@
-use crate::util::{http_method_str, http_url};
+use crate::{
+    middleware::get_scope,
+    util::{http_method_str, http_url},
+};
 use actix_http::{encoding::Decoder, BoxedPayloadStream, Error, Payload};
 use actix_web::{
     body::MessageBody,
@@ -17,11 +20,11 @@ use futures_util::{future::TryFutureExt as _, Future, Stream};
 use opentelemetry::{
     global,
     propagation::Injector,
-    trace::{SpanKind, Status, TraceContextExt, Tracer, TracerProvider},
+    trace::{SpanKind, Status, TraceContextExt, Tracer},
     Context, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::{
-    MESSAGING_MESSAGE_BODY_SIZE, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, SERVER_ADDRESS,
+    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, MESSAGING_MESSAGE_BODY_SIZE, SERVER_ADDRESS,
     SERVER_PORT, URL_FULL, USER_AGENT_ORIGINAL,
 };
 use serde::Serialize;
@@ -165,10 +168,7 @@ impl InstrumentedClientRequest {
         F: FnOnce(ClientRequest) -> R,
         R: Future<Output = AwcResult>,
     {
-        let tracer = global::tracer_provider().tracer_builder("actix-web-opentelemetry")
-            .with_version(env!("CARGO_PKG_VERSION"))
-            .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
-            .build();
+        let tracer = global::tracer_with_scope(get_scope());
 
         // Client attributes
         // https://github.com/open-telemetry/semantic-conventions/blob/v1.21.0/docs/http/http-spans.md#http-client
@@ -308,7 +308,10 @@ fn record_response<T>(response: &ClientResponse<T>, cx: &Context) {
     let span = cx.span();
     let status = convert_status(response.status());
     span.set_status(status);
-    span.set_attribute(KeyValue::new(HTTP_RESPONSE_STATUS_CODE, response.status().as_u16() as i64));
+    span.set_attribute(KeyValue::new(
+        HTTP_RESPONSE_STATUS_CODE,
+        response.status().as_u16() as i64,
+    ));
     span.end();
 }
 
@@ -328,7 +331,7 @@ impl<'a> ActixClientCarrier<'a> {
     }
 }
 
-impl<'a> Injector for ActixClientCarrier<'a> {
+impl Injector for ActixClientCarrier<'_> {
     fn set(&mut self, key: &str, value: String) {
         let header_name = HeaderName::from_str(key).expect("Must be header name");
         let header_value = HeaderValue::from_str(&value).expect("Must be a header value");
