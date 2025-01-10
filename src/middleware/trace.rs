@@ -7,16 +7,14 @@ use actix_web::{
 };
 use futures_util::future::{ok, FutureExt as _, LocalBoxFuture, Ready};
 use opentelemetry::{
-    global,
+    global::{self},
     propagation::Extractor,
-    trace::{
-        FutureExt as OtelFutureExt, SpanKind, Status, TraceContextExt, Tracer, TracerProvider,
-    },
+    trace::{FutureExt as OtelFutureExt, SpanKind, Status, TraceContextExt, Tracer},
     KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::HTTP_RESPONSE_STATUS_CODE;
 
-use super::route_formatter::RouteFormatter;
+use super::{get_scope, route_formatter::RouteFormatter};
 use crate::util::trace_attributes_from_request;
 
 /// Request tracing middleware.
@@ -121,10 +119,7 @@ where
 
     fn new_transform(&self, service: S) -> Self::Future {
         ok(RequestTracingMiddleware::new(
-            global::tracer_provider().tracer_builder("actix-web-opentelemetry")
-                .with_version(env!("CARGO_PKG_VERSION"))
-                .with_schema_url(opentelemetry_semantic_conventions::SCHEMA_URL)
-                .build(),
+            global::tracer_with_scope(get_scope()),
             service,
             self.route_formatter.clone(),
         ))
@@ -242,7 +237,7 @@ impl<'a> RequestHeaderCarrier<'a> {
     }
 }
 
-impl<'a> Extractor for RequestHeaderCarrier<'a> {
+impl Extractor for RequestHeaderCarrier<'_> {
     fn get(&self, key: &str) -> Option<&str> {
         self.headers.get(key).and_then(|v| v.to_str().ok())
     }

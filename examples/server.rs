@@ -1,8 +1,13 @@
 use actix_web::{web, App, HttpRequest, HttpServer};
 use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 use opentelemetry::{global, KeyValue};
-use opentelemetry_otlp::{TonicExporterBuilder, WithExportConfig};
-use opentelemetry_sdk::{metrics::{Aggregation, Instrument, SdkMeterProvider, Stream}, propagation::TraceContextPropagator, runtime::TokioCurrentThread, Resource, trace};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{
+    metrics::{Aggregation, Instrument, SdkMeterProvider, Stream},
+    propagation::TraceContextPropagator,
+    trace::TracerProvider,
+    Resource,
+};
 
 async fn index(_req: HttpRequest, _path: actix_web::web::Path<String>) -> &'static str {
     "Hello world!"
@@ -13,20 +18,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start a new OTLP trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let service_name_resource = Resource::new(vec![KeyValue::new(
-        "service.name",
-        "actix_server"
-    )]);
+    let service_name_resource = Resource::new(vec![KeyValue::new("service.name", "actix_server")]);
 
-    let _tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(TonicExporterBuilder::default().with_endpoint("http://127.0.0.1:6565"))
-        .with_trace_config(
-            trace::Config::default()
-                .with_resource(service_name_resource)
+    let _tracer = TracerProvider::builder()
+        .with_batch_exporter(
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint("http://127.0.0.1:6565")
+                .build()?,
+            opentelemetry_sdk::runtime::TokioCurrentThread,
         )
-        .install_batch(TokioCurrentThread)
-        .expect("pipeline install error");
+        .with_resource(service_name_resource)
+        .build();
 
     // Start a new prometheus metrics pipeline if --features metrics-prometheus is used
     #[cfg(feature = "metrics-prometheus")]
@@ -35,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let exporter = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
+
         let provider = SdkMeterProvider::builder()
             .with_reader(exporter)
             .with_resource(Resource::new([KeyValue::new("service.name", "my_app")]))

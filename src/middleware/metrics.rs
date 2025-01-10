@@ -14,12 +14,14 @@ use opentelemetry::{
 use std::borrow::Cow;
 use std::{sync::Arc, time::SystemTime};
 
+use super::get_scope;
 use crate::util::metrics_attributes_from_request;
 use crate::RouteFormatter;
 
 // Follows the experimental semantic conventions for HTTP metrics:
 // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/http-metrics.md
 use opentelemetry_semantic_conventions::trace::HTTP_RESPONSE_STATUS_CODE;
+
 const HTTP_SERVER_DURATION: &str = "http.server.duration";
 const HTTP_SERVER_ACTIVE_REQUESTS: &str = "http.server.active_requests";
 const HTTP_SERVER_REQUEST_SIZE: &str = "http.server.request.size";
@@ -45,26 +47,26 @@ impl Metrics {
             .f64_histogram(HTTP_SERVER_DURATION)
             .with_description("Measures the duration of inbound HTTP requests.")
             .with_unit("s")
-            .init();
+            .build();
 
         let http_server_active_requests = meter
             .i64_up_down_counter(HTTP_SERVER_ACTIVE_REQUESTS)
             .with_description(
                 "Measures the number of concurrent HTTP requests that are currently in-flight.",
             )
-            .init();
+            .build();
 
         let http_server_request_size = meter
             .u64_histogram(HTTP_SERVER_REQUEST_SIZE)
             .with_description("Measures the size of HTTP request messages (compressed).")
             .with_unit("By")
-            .init();
+            .build();
 
         let http_server_response_size = meter
             .u64_histogram(HTTP_SERVER_RESPONSE_SIZE)
             .with_description("Measures the size of HTTP response messages (compressed).")
             .with_unit("By")
-            .init();
+            .build();
 
         Metrics {
             http_server_active_requests,
@@ -99,7 +101,7 @@ impl RequestMetricsBuilder {
 
     /// Set the meter provider this middleware should use to construct meters
     pub fn with_meter_provider(mut self, meter_provider: impl MeterProvider) -> Self {
-        self.meter = Some(get_versioned_meter(meter_provider));
+        self.meter = Some(meter_provider.meter_with_scope(get_scope()));
         self
     }
 
@@ -107,23 +109,13 @@ impl RequestMetricsBuilder {
     pub fn build(self) -> RequestMetrics {
         let meter = self
             .meter
-            .unwrap_or_else(|| get_versioned_meter(global::meter_provider()));
+            .unwrap_or_else(|| global::meter_provider().meter_with_scope(get_scope()));
 
         RequestMetrics {
             route_formatter: self.route_formatter,
             metrics: Arc::new(Metrics::new(meter)),
         }
     }
-}
-
-/// construct meters for this crate
-fn get_versioned_meter(meter_provider: impl MeterProvider) -> Meter {
-    meter_provider.versioned_meter(
-        "actix_web_opentelemetry",
-        Some(env!("CARGO_PKG_VERSION")),
-        Some(opentelemetry_semantic_conventions::SCHEMA_URL),
-        None,
-    )
 }
 
 /// Request metrics tracking
@@ -296,7 +288,7 @@ where
 pub(crate) mod prometheus {
     use actix_web::{dev, http::StatusCode};
     use futures_util::future::{self, LocalBoxFuture};
-    use opentelemetry::{global, metrics::MetricsError};
+    use opentelemetry_sdk::metrics::MetricError;
     use prometheus::{Encoder, Registry, TextEncoder};
 
     /// Prometheus request metrics service
@@ -320,7 +312,13 @@ pub(crate) mod prometheus {
             let metric_families = self.prometheus_registry.gather();
             let mut buf = Vec::new();
             if let Err(err) = encoder.encode(&metric_families[..], &mut buf) {
-                global::handle_error(MetricsError::Other(err.to_string()));
+                tracing::error!(
+                    name: "encode_failure",
+                    target: env!("CARGO_PKG_NAME"),
+                    name = "encode_failure",
+                    error = MetricError::Other(err.to_string()).to_string(),
+                    ""
+                );
             }
 
             String::from_utf8(buf).unwrap_or_default()
