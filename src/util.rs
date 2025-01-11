@@ -138,8 +138,9 @@ pub(super) fn trace_attributes_from_request(
     attributes
 }
 
+/// Create metric attributes for the given request
 #[cfg(feature = "metrics")]
-pub(super) fn metrics_attributes_from_request(
+pub fn metrics_attributes_from_request(
     req: &ServiceRequest,
     http_route: std::borrow::Cow<'static, str>,
 ) -> Vec<KeyValue> {
