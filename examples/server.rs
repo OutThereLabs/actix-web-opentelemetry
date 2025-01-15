@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let service_name_resource = Resource::new(vec![KeyValue::new("service.name", "actix_server")]);
 
-    let _tracer = TracerProvider::builder()
+    let tracer = TracerProvider::builder()
         .with_batch_exporter(
             opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
@@ -30,6 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .with_resource(service_name_resource)
         .build();
+
+    global::set_tracer_provider(tracer);
 
     // Start a new prometheus metrics pipeline if --features metrics-prometheus is used
     #[cfg(feature = "metrics-prometheus")]
