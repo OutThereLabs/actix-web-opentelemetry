@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.20.1](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.20.0..v0.20.1)
+
+### Added
+
+* add `RequestMetricsBuilder::with_metric_attrs_from_req` (#179)
+
 ## [v0.20.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.19.0..v0.20.0)
 
 ### Changed
