@@ -62,7 +62,7 @@ opentelemetry_sdk = { version = "0.27", features = [
   "metrics",
   "rt-tokio-current-thread",
 ] }
-opentelemetry-otlp = "0.27"
+opentelemetry-otlp = "0.28"
 opentelemetry-stdout = { version = "0.27", features = ["trace", "metrics"] }
 
 [package.metadata.docs.rs]
