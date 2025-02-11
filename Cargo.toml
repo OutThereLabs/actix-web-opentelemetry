@@ -35,14 +35,14 @@ awc = { version = "3.0", optional = true, default-features = false, features = [
 futures-util = { version = "0.3", default-features = false, features = [
   "alloc",
 ] }
-opentelemetry = { version = "0.27", default-features = false, features = [
+opentelemetry = { version = "0.28", default-features = false, features = [
   "trace",
 ] }
-opentelemetry-prometheus = { version = "0.27", optional = true }
-opentelemetry-semantic-conventions = { version = "0.27", features = [
+opentelemetry-prometheus = { version = "0.28", optional = true }
+opentelemetry-semantic-conventions = { version = "0.28", features = [
   "semconv_experimental",
 ] }
-opentelemetry_sdk = { version = "0.27", optional = true, features = [
+opentelemetry_sdk = { version = "0.28", optional = true, features = [
   "metrics",
   "rt-tokio-current-thread",
 ] }
@@ -57,13 +57,13 @@ actix-web-opentelemetry = { path = ".", features = [
   "sync-middleware",
   "awc",
 ] }
-opentelemetry_sdk = { version = "0.27", features = [
+opentelemetry_sdk = { version = "0.28", features = [
   "spec_unstable_metrics_views",
   "metrics",
   "rt-tokio-current-thread",
 ] }
-opentelemetry-otlp = "0.27"
-opentelemetry-stdout = { version = "0.27", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
+opentelemetry-stdout = { version = "0.28", features = ["trace", "metrics"] }
 
 [package.metadata.docs.rs]
 all-features = true

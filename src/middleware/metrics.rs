@@ -82,7 +82,7 @@ impl Metrics {
 pub struct RequestMetricsBuilder {
     route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
     meter: Option<Meter>,
-    metric_attrs_from_req: Option<fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>>
+    metric_attrs_from_req: Option<fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>>,
 }
 
 impl RequestMetricsBuilder {
@@ -107,7 +107,10 @@ impl RequestMetricsBuilder {
     }
 
     /// Set a metric attrs function that the middleware will use to create metric attributes
-    pub fn with_metric_attrs_from_req(mut self, metric_attrs_from_req: fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>) -> Self {
+    pub fn with_metric_attrs_from_req(
+        mut self,
+        metric_attrs_from_req: fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>,
+    ) -> Self {
         self.metric_attrs_from_req = Some(metric_attrs_from_req);
         self
     }
@@ -121,7 +124,9 @@ impl RequestMetricsBuilder {
         RequestMetrics {
             route_formatter: self.route_formatter,
             metrics: Arc::new(Metrics::new(meter)),
-            metric_attrs_from_req: self.metric_attrs_from_req.unwrap_or(metrics_attributes_from_request)
+            metric_attrs_from_req: self
+                .metric_attrs_from_req
+                .unwrap_or(metrics_attributes_from_request),
         }
     }
 }
@@ -168,7 +173,7 @@ impl RequestMetricsBuilder {
 pub struct RequestMetrics {
     route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
     metrics: Arc<Metrics>,
-    metric_attrs_from_req: fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>
+    metric_attrs_from_req: fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>,
 }
 
 impl RequestMetrics {
@@ -205,7 +210,7 @@ where
             service,
             metrics: self.metrics.clone(),
             route_formatter: self.route_formatter.clone(),
-            metric_attrs_from_req: self.metric_attrs_from_req.clone()
+            metric_attrs_from_req: self.metric_attrs_from_req.clone(),
         };
 
         future::ok(service)
@@ -218,7 +223,7 @@ pub struct RequestMetricsMiddleware<S> {
     service: S,
     metrics: Arc<Metrics>,
     route_formatter: Option<Arc<dyn RouteFormatter + Send + Sync + 'static>>,
-    metric_attrs_from_req: fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>
+    metric_attrs_from_req: fn(&dev::ServiceRequest, Cow<'static, str>) -> Vec<KeyValue>,
 }
 
 impl<S, B> dev::Service<dev::ServiceRequest> for RequestMetricsMiddleware<S>
