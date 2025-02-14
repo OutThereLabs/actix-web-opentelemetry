@@ -1,7 +1,7 @@
 use actix_web_opentelemetry::ClientExt;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
 use std::error::Error;
 use std::io;
@@ -29,14 +29,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     // Start a new OTLP trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let service_name_resource = Resource::new(vec![KeyValue::new("service.name", "actix_client")]);
+    let service_name_resource = Resource::builder_empty()
+        .with_attribute(KeyValue::new("service.name", "actix_client"))
+        .build();
 
-    let _tracer = TracerProvider::builder()
+    let tracer = SdkTracerProvider::builder()
         .with_batch_exporter(
             opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
                 .build()?,
-            opentelemetry_sdk::runtime::TokioCurrentThread,
         )
         .with_resource(service_name_resource)
         .build();
@@ -46,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
 
     println!("Response: {}", response);
 
-    global::shutdown_tracer_provider();
+    tracer.shutdown()?;
 
     Ok(())
 }

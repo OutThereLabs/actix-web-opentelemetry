@@ -25,7 +25,7 @@ use crate::util::trace_attributes_from_request;
 /// use actix_web::{web, App, HttpServer};
 /// use actix_web_opentelemetry::RequestTracing;
 /// use opentelemetry::global;
-/// use opentelemetry_sdk::trace::TracerProvider;
+/// use opentelemetry_sdk::trace::SdkTracerProvider;
 ///
 /// async fn index() -> &'static str {
 ///     "Hello world!"
@@ -39,7 +39,7 @@ use crate::util::trace_attributes_from_request;
 ///     let exporter = opentelemetry_stdout::SpanExporter::default();
 ///
 ///     // Configure your tracer provider with your exporter(s)
-///     let provider = TracerProvider::builder()
+///     let provider = SdkTracerProvider::builder()
 ///         .with_simple_exporter(exporter)
 ///         .build();
 ///     global::set_tracer_provider(provider);

@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.21.0](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.21.0..v0.20.1)
+
+### Changed
+
+* Update opentelemetry packages to 0.28 (#190)
+
 ## [v0.20.1](https://github.com/OutThereLabs/actix-web-opentelemetry/compare/v0.20.0..v0.20.1)
 
 ### Added

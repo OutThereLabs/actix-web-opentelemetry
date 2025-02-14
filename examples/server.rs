@@ -5,7 +5,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     metrics::{Aggregation, Instrument, SdkMeterProvider, Stream},
     propagation::TraceContextPropagator,
-    trace::TracerProvider,
+    trace::SdkTracerProvider,
     Resource,
 };
 
@@ -18,20 +18,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start a new OTLP trace pipeline
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let service_name_resource = Resource::new(vec![KeyValue::new("service.name", "actix_server")]);
+    let service_name_resource = Resource::builder_empty()
+        .with_attribute(KeyValue::new("service.name", "actix_server"))
+        .build();
 
-    let tracer = TracerProvider::builder()
+    let tracer = SdkTracerProvider::builder()
         .with_batch_exporter(
             opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
                 .with_endpoint("http://127.0.0.1:6565")
                 .build()?,
-            opentelemetry_sdk::runtime::TokioCurrentThread,
         )
         .with_resource(service_name_resource)
         .build();
 
-    global::set_tracer_provider(tracer);
+    global::set_tracer_provider(tracer.clone());
 
     // Start a new prometheus metrics pipeline if --features metrics-prometheus is used
     #[cfg(feature = "metrics-prometheus")]
@@ -43,7 +44,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let provider = SdkMeterProvider::builder()
             .with_reader(exporter)
-            .with_resource(Resource::new([KeyValue::new("service.name", "my_app")]))
+            .with_resource(
+                Resource::builder_empty()
+                    .with_attribute(KeyValue::new("service.name", "my_app"))
+                    .build(),
+            )
             .with_view(
                 opentelemetry_sdk::metrics::new_view(
                     Instrument::new().name("http.server.duration"),
@@ -79,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     // Ensure all spans have been reported
-    global::shutdown_tracer_provider();
+    tracer.shutdown()?;
 
     #[cfg(feature = "metrics-prometheus")]
     meter_provider.shutdown()?;

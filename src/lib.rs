@@ -51,7 +51,7 @@
 //! use actix_web::{web, App, HttpServer};
 //! use actix_web_opentelemetry::RequestTracing;
 //! use opentelemetry::global;
-//! use opentelemetry_sdk::trace::TracerProvider;
+//! use opentelemetry_sdk::trace::SdkTracerProvider;
 //!
 //! async fn index() -> &'static str {
 //!     "Hello world!"
@@ -65,7 +65,7 @@
 //!     let exporter = opentelemetry_stdout::SpanExporter::default();
 //!
 //!     // Configure your tracer provider with your exporter(s)
-//!     let provider = TracerProvider::builder()
+//!     let provider = SdkTracerProvider::builder()
 //!         .with_simple_exporter(exporter)
 //!         .build();
 //!     global::set_tracer_provider(provider);
@@ -162,7 +162,6 @@ pub use middleware::metrics::{RequestMetrics, RequestMetricsBuilder, RequestMetr
 #[cfg(feature = "metrics")]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub use util::metrics_attributes_from_request;
-
 
 pub use {
     middleware::route_formatter::RouteFormatter,
