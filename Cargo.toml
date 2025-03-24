@@ -63,7 +63,7 @@ opentelemetry_sdk = { version = "0.28", features = [
   "rt-tokio-current-thread",
 ] }
 opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
-opentelemetry-stdout = { version = "0.28", features = ["trace", "metrics"] }
+opentelemetry-stdout = { version = "0.29", features = ["trace", "metrics"] }
 
 [package.metadata.docs.rs]
 all-features = true
