@@ -42,7 +42,7 @@ opentelemetry-prometheus = { version = "0.28", optional = true }
 opentelemetry-semantic-conventions = { version = "0.28", features = [
   "semconv_experimental",
 ] }
-opentelemetry_sdk = { version = "0.28", optional = true, features = [
+opentelemetry_sdk = { version = "0.29", optional = true, features = [
   "metrics",
   "rt-tokio-current-thread",
 ] }
@@ -57,7 +57,7 @@ actix-web-opentelemetry = { path = ".", features = [
   "sync-middleware",
   "awc",
 ] }
-opentelemetry_sdk = { version = "0.28", features = [
+opentelemetry_sdk = { version = "0.29", features = [
   "spec_unstable_metrics_views",
   "metrics",
   "rt-tokio-current-thread",
