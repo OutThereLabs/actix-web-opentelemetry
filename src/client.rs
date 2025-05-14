@@ -24,9 +24,10 @@ use opentelemetry::{
     Context, KeyValue,
 };
 use opentelemetry_semantic_conventions::trace::{
-    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, MESSAGING_MESSAGE_BODY_SIZE, SERVER_ADDRESS,
+    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, SERVER_ADDRESS,
     SERVER_PORT, URL_FULL, USER_AGENT_ORIGINAL,
 };
+use opentelemetry_semantic_conventions::attribute::MESSAGING_MESSAGE_BODY_SIZE;
 use serde::Serialize;
 use std::mem;
 use std::str::FromStr;
